@@ -1,0 +1,14 @@
+# Development Environment Configuration
+
+environment: "development"
+debug: true
+
+logging:
+  level: "DEBUG"
+
+security:
+  secure_cookies: false
+
+rate_limit:
+  requests_per_minute: 100
+  rate_limit_ms: 1000

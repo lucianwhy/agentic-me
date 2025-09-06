@@ -1,0 +1,19 @@
+# Testing
+pytest
+pytest-cov
+pytest-mock
+coverage
+
+# Type checking
+mypy
+types-requests
+types-PyYAML
+
+# Linting & Formatierung
+ruff
+black
+isort
+bandit
+
+# Pre-commit hooks
+pre-commit

@@ -1,0 +1,43 @@
+services:
+  ollama: # wip - for now ollama is required to run locally (ollama serve, ollama pull llama3.2).
+    image: custom-ollama:latest
+    build:
+      context: .
+      dockerfile: ollama/Dockerfile_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=${OLLAMA_MODELS}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    runtime: nvidia
+    profiles:
+      - ollama
+
+  chatcv:
+    image: chatcv-app:latest-${ENVIRONMENT}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      secrets:
+        - source: guardrails_token
+          target: guardrails_token
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT}
+      - ENVIRONMENT=${ENVIRONMENT}
+
+secrets:
+  guardrails_token:
+    environment: GUARDRAILS_TOKEN
+
+volumes:
+  ollama_data:

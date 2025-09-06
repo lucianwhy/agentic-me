@@ -1,0 +1,23 @@
+# Production Environment Configuration
+
+environment: "production"
+debug: false
+
+logging:
+  level: "INFO"
+
+security:
+  secure_cookies: true
+
+rate_limit:
+  requests_per_minute: 20
+  rate_limit_ms: 3000
+
+llm:
+  timeout: 30
+
+invite_codes:
+  PROD2024:
+    company: "Production User"
+    recruiter: "Recruiter"
+    active: true

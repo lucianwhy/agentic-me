@@ -1,0 +1,152 @@
+# Core configuration for ChatCV - English comments and clear structure
+llm:
+  provider: "openai"
+  model: "gpt-4o-mini" # eg. "gpt-4o-mini" or "llama3.2"
+  temperature: 0.1
+  timeout: 60
+
+ollama:
+  endpoint: "http://ollama:11434"
+  models: "llama3.2"
+  timeout: 120
+
+embedding:
+  provider: "openai"
+  model: "text-embedding-3-small"
+  chunk_size: 1000
+  chunk_overlap: 200
+
+vectorstore:
+  provider: "chroma"
+  persist_directory: "data/vector_db"
+  collection_name: "chatcv"
+  retrieval_k: 8
+
+rate_limit:
+  enabled: true
+  requests_per_minute: 20
+  burst_limit: 5
+  rate_limit_ms: 3000
+
+security:
+  session_timeout_hours: 24
+  max_query_length: 1000
+  max_job_text_length: 5000
+  min_job_text_length: 50
+  allowed_origins: ["*"]
+  secure_cookies: true
+
+logging:
+  level: "INFO"
+  file_path: "logs/chatcv.log"
+  max_file_size_mb: 100
+  backup_count: 5
+  analytics_enabled: true
+
+data:
+  # CV file path
+  cv_path: "data/CV_Demo.pdf"
+  about_me_path: "data/about_me.md"
+  vector_db_path: "data/vector_db"
+  analytics_log_path: "data/analytics.log"
+
+# === Personalized Information ===
+
+candidate:
+  name: "John Doe"
+  email: "jhon.doe@example.com"
+  linkedin: "https://linkedin.com/in/jhon-doe"
+  github: "https://github.com/jhon-doe"
+
+
+# === RAG & CHAT PROMPTS ===
+chat_system_prompt: |
+  You are a helpful AI assistant for answering questions about {candidate_name}'s professional background and experience.
+
+  Your role is to provide accurate, relevant information based strictly on the provided context about {candidate_name}'s:
+  - Professional experience and career history
+  - Technical skills and expertise
+  - Educational background and qualifications
+  - Research work and publications
+  - Projects and achievements
+
+  Guidelines:
+  - Only use information from the provided context
+  - Be professional, concise, and objective
+  - If information is not available, clearly state so
+  - Avoid speculation or embellishment
+  - Keep responses focused and relevant
+  - Use a helpful but neutral tone
+  "Retrieved context: {{context}}"
+
+chat_fallback_response: |
+  I apologize, but I'm unable to provide a response at the moment.
+  This could be due to:
+  - The information not being available in the provided documents
+  - A temporary system issue
+  - The query being outside my scope of knowledge about {candidate_name}'s professional background
+
+  Please try rephrasing your question or ask about specific aspects of {candidate_name}'s experience, skills, or background.
+
+conversation_history_prompt: "Given the conversation context, generate a search query for relevant information about {candidate_name}'s background."
+
+# === SUMMARY GENERATION PROMPTS ===
+summary_prompt_template: |
+  Write a concise professional summary of the following candidate information for {candidate_name}.
+
+  Context: {{context}}
+
+  Focus on:
+  - Key technical skills and expertise areas
+  - Professional achievements and notable projects
+  - Educational background and qualifications
+  - Professional attributes and working style
+  - Domain expertise and industry experience
+
+  Guidelines:
+  - Keep the summary professional and objective
+  - Highlight the most relevant qualifications
+  - Use clear, concise language
+  - Structure the content logically
+  - Avoid speculation or embellishment
+  - Aim for 150-300 words
+
+# === JOB MATCHING PROMPTS ===
+job_matching_system_prompt: "You are an expert technical recruiter and career advisor with deep knowledge of software engineering and data science roles."
+
+job_matching_analysis_prompt: |
+  Analyze how well {candidate_name} matches the provided job description.
+
+  **Context (Job Description and {candidate_name}'s Information):**
+  {{context}}
+
+  IMPORTANT: If the job description is incomplete, nonsensical, or lacks key responsibilities or skill requirements, respond with this structure:
+  - Overall Match Score: N/A
+  - Justification: The job description appears incomplete or invalid.
+
+  - Here is a summary of general Strengths and Possible Gaps of {candidate_name}:
+
+  **Required Output Structure:**
+
+  ## Match Assessment for {candidate_name}
+
+  **Overall Match Score: X/10**
+
+  **Justification:**
+  Brief explanation of the score.
+
+  ### Key Strengths
+  - [List 3-4 strongest matching points]
+
+  ### Potential Gaps
+  - [List areas for development]
+
+  ### Technical Skills Alignment
+  - [Detailed technical analysis]
+
+  ### Recommendation
+  **[Strong Fit / Good Fit / Moderate Fit / Limited Fit]**
+  - [2-3 sentence rationale]
+
+  ### Interview Questions
+  - [3-4 specific questions to explore during interview]

@@ -1,0 +1,27 @@
+fastapi
+uvicorn
+langchain
+langchain-chroma
+langchain-openai
+langchain-ollama
+langchain_community
+pypdf
+chromadb
+python-dotenv
+PyPDF2
+jinja2
+python-multipart
+requests
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+PyYAML>=6.0
+gunicorn
+# For HTTP requests
+httpx>=0.24.0
+
+# Optional: Advanced Analytics (requires LANGSMITH_API_KEY)
+langsmith>=0.1.0
+mlflow>=2.8.0
+
+# Optional: Content Safety (requires GUARDRAILS_TOKEN)
+guardrails-ai

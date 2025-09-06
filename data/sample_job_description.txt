@@ -1,0 +1,60 @@
+# Sample Job Description
+
+## Senior Software Engineer - AI/ML Platform
+
+**Company:** TechCorp Solutions
+**Location:** Remote / San Francisco, CA
+**Type:** Full-time
+
+### About the Role
+
+We're seeking a Senior Software Engineer to join our AI/ML Platform team. You'll be responsible for building and maintaining the infrastructure that powers our machine learning applications, working closely with data scientists and product teams to deliver scalable AI solutions.
+
+### Key Responsibilities
+
+- Design and develop scalable microservices for ML model deployment and inference
+- Build and maintain CI/CD pipelines for ML model lifecycle management
+- Collaborate with data science teams to operationalize machine learning models
+- Implement monitoring and observability solutions for production ML systems
+- Optimize system performance and ensure high availability of ML services
+
+### Required Qualifications
+
+- 5+ years of software engineering experience
+- Strong proficiency in Python and modern web frameworks (FastAPI, Django, Flask)
+- Experience with containerization technologies (Docker, Kubernetes)
+- Knowledge of cloud platforms (AWS, Azure, or GCP)
+- Experience with database design and optimization
+- Understanding of ML/AI concepts and MLOps practices
+
+### Preferred Qualifications
+
+- Experience with vector databases and similarity search
+- Knowledge of LLM integration and prompt engineering
+- Experience with stream processing and real-time systems
+- Contribution to open-source projects
+- Experience with infrastructure as code (Terraform, CloudFormation)
+
+### Technical Stack
+
+- **Backend:** Python, FastAPI, PostgreSQL, Redis
+- **Infrastructure:** Docker, Kubernetes, AWS
+- **ML/AI:** Transformers, LangChain, Vector Databases
+- **Monitoring:** Prometheus, Grafana, ELK Stack
+
+### What We Offer
+
+- Competitive salary and equity package
+- Comprehensive health, dental, and vision insurance
+- Flexible PTO and remote work options
+- Professional development budget
+- State-of-the-art equipment and tools
+
+### Interview Process
+
+1. Initial phone screening (30 minutes)
+2. Technical coding interview (60 minutes)
+3. System design interview (60 minutes)
+4. Final round with team members (60 minutes)
+
+**Apply by:** Submit your resume and a cover letter explaining your interest in AI/ML platform engineering.
