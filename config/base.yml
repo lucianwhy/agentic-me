@@ -3,7 +3,7 @@ llm:
   provider: "openai"          # openai（含 DeepSeek 等兼容接口）或 ollama
   model: "gpt-4o-mini"        # 也可用 deepseek-chat / qwen-plus 等
   temperature: 0.1
-  timeout: 60
+  timeout: 180
   base_url: null              # 也可通过 OPENAI_BASE_URL / LLM_BASE_URL 覆盖
 
 ollama:
@@ -12,8 +12,8 @@ ollama:
   timeout: 120
 
 embedding:
-  provider: "openai"
-  model: "text-embedding-3-small"
+  provider: "fastembed"
+  model: "BAAI/bge-small-zh-v1.5"
   chunk_size: 1000
   chunk_overlap: 200
   base_url: null

@@ -19,3 +19,4 @@ PyYAML>=6.0
 gunicorn
 httpx>=0.24.0
 langchain-classic
+fastembed

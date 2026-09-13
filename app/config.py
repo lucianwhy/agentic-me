@@ -118,6 +118,7 @@ class AppConfig(BaseSettings):
     llm_model_env: str | None = Field(default=None, alias="LLM_MODEL")
     llm_provider_env: str | None = Field(default=None, alias="LLM_PROVIDER")
     embedding_model_env: str | None = Field(default=None, alias="EMBEDDING_MODEL")
+    embedding_provider_env: str | None = Field(default=None, alias="EMBEDDING_PROVIDER")
     embedding_base_url: str | None = Field(default=None, alias="EMBEDDING_BASE_URL")
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
 
@@ -199,6 +200,12 @@ class AppConfig(BaseSettings):
         ).strip()
         if embedding_model:
             self.embedding.model = embedding_model
+
+        embedding_provider = (
+            self.embedding_provider_env or os.getenv("EMBEDDING_PROVIDER") or ""
+        ).strip()
+        if embedding_provider:
+            self.embedding.provider = embedding_provider
 
         ollama_endpoint = (os.getenv("OLLAMA_ENDPOINT") or "").strip()
         if ollama_endpoint:

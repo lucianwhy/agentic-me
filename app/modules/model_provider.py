@@ -95,6 +95,17 @@ class ModelProvider:
                 base_url=self.config.ollama.endpoint,
             )
 
+        if provider in ("fastembed", "local"):
+            self.logger.info("Using local FastEmbed embedding provider.")
+            try:
+                from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+            except ImportError as exc:
+                raise LLMNotConfigured(
+                    "已选择 FastEmbed，但未安装 fastembed。"
+                    "请执行：pip install fastembed"
+                ) from exc
+            return FastEmbedEmbeddings(model_name=model_name)
+
         if not self.config.resolved_api_key() and not os.getenv("OPENAI_API_KEY"):
             raise LLMNotConfigured(
                 "尚未配置 OPENAI_API_KEY，无法初始化 Embedding 模型。"
