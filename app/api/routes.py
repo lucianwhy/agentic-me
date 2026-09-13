@@ -1,7 +1,9 @@
+import json
 import time
+from collections.abc import Iterator
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.auth.auth import (
     authenticate_with_code,
@@ -15,7 +17,7 @@ from app.modules.job_matching import (
     analyze_job_match,
     process_job_description,
 )
-from app.modules.rag_pipeline import get_chat_completion
+from app.modules.rag_pipeline import get_chat_completion, get_chat_stream
 from app.modules.readiness import (
     LLMNotConfigured,
     VectorStoreNotReady,
@@ -223,6 +225,113 @@ async def chat(
 
     api_logger.info(f"Chat response generated for {company} in {response_time:.2f}s")
     return {"answer": response_text, "sources": sources}
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: Request,
+    query: str = Body(..., embed=True),
+    user_code: str = Depends(require_auth),
+):
+    """
+    Stream chat answers as Server-Sent Events (SSE).
+
+    Wire protocol (`text/event-stream`):
+      data: {"type":"token","content":"..."}
+      data: {"type":"done","sources":[...]}
+      data: {"type":"error","message":"..."}
+
+    Keeps POST /chat for non-streaming compatibility.
+    Retrieval runs first (non-stream); only the final answer LLM is streamed.
+    """
+    if not is_llm_configured() or (
+        not is_vectorstore_ready() and not is_llm_configured()
+    ):
+        return _not_ready_response()
+
+    user_info = get_user_info(user_code)
+    company = user_info.get("company", "Unknown")
+    session_token = request.cookies.get("session_token")
+
+    api_logger.info(
+        f"Received streaming chat query from {company} (user_code: {user_code}), "
+        f"query length: {len(query)}"
+    )
+
+    user_metadata = {"user_code": user_code, "company": company}
+    start_time = time.time()
+
+    def _sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    def event_generator() -> Iterator[str]:
+        accumulated: list[str] = []
+        try:
+            for event in get_chat_stream(query, user_metadata=user_metadata):
+                etype = event.get("type")
+                if etype == "token":
+                    content = event.get("content") or ""
+                    accumulated.append(content)
+                    yield _sse({"type": "token", "content": content})
+                elif etype == "done":
+                    sources = _serialize_sources(event.get("sources", []))
+                    response_time = time.time() - start_time
+                    response_text = "".join(accumulated)
+                    try:
+                        from app.config import config
+
+                        advanced_analytics.log_chat_interaction_advanced(
+                            user_code=user_code,
+                            company=company,
+                            query=query,
+                            response=response_text,
+                            response_time=response_time,
+                            sources=sources,
+                            session_token=session_token or "",
+                            metadata={
+                                "llm_model": config.llm.model,
+                                "pipeline": "RAG-stream",
+                            },
+                        )
+                    except Exception as log_err:  # analytics must not break the stream
+                        api_logger.warning(f"Stream analytics logging failed: {log_err!s}")
+                    api_logger.info(
+                        f"Streaming chat response for {company} finished in {response_time:.2f}s"
+                    )
+                    yield _sse({"type": "done", "sources": sources})
+                elif etype == "error":
+                    yield _sse(
+                        {
+                            "type": "error",
+                            "message": event.get("message") or "生成回答失败，请稍后重试",
+                        }
+                    )
+                else:
+                    # Forward unknown events for forward compatibility
+                    yield _sse(event)
+        except (LLMNotConfigured, VectorStoreNotReady):
+            err = chinese_not_ready_error()
+            yield _sse(
+                {
+                    "type": "error",
+                    "message": err.get("message") or "服务暂未就绪",
+                }
+            )
+        except Exception as exc:
+            api_logger.error(
+                f"Streaming chat failed for {company}: {type(exc).__name__}: {exc!s}"
+            )
+            yield _sse({"type": "error", "message": "生成回答失败，请稍后重试"})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx proxy buffering for SSE
+        },
+    )
 
 
 @router.post("/summary")

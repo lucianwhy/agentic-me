@@ -371,8 +371,25 @@
                 : 'chat-bubble bg-white border border-stone-200 text-slate-800 px-3.5 py-2.5 rounded-2xl rounded-bl-md max-w-[90%] shadow-sm';
             const roleLabel = isUser ? '你' : '助手';
             const labelClass = isUser ? 'text-slate-300' : 'text-slate-500';
-            message.innerHTML = `<div class="text-xs ${labelClass} mb-1 font-medium">${roleLabel}</div><div>${formatMessageHtml(text)}</div>`;
+            message.innerHTML = `<div class="text-xs ${labelClass} mb-1 font-medium">${roleLabel}</div><div class="msg-body">${formatMessageHtml(text)}</div>`;
             Elements.responseDiv.appendChild(message);
+            Elements.responseDiv.scrollTop = Elements.responseDiv.scrollHeight;
+            return message;
+        }
+        /** Create an empty assistant bubble for token-by-token streaming. */
+        static beginAssistantStream() {
+            const message = document.createElement('div');
+            message.className = 'chat-bubble bg-white border border-stone-200 text-slate-800 px-3.5 py-2.5 rounded-2xl rounded-bl-md max-w-[90%] shadow-sm';
+            message.innerHTML = `<div class="text-xs text-slate-500 mb-1 font-medium">助手</div><div class="msg-body"><span class="text-slate-400">正在生成…</span></div>`;
+            Elements.responseDiv.appendChild(message);
+            Elements.responseDiv.scrollTop = Elements.responseDiv.scrollHeight;
+            return message;
+        }
+        /** Re-render streaming bubble HTML safely (escape + markdown) on each chunk. */
+        static updateAssistantStream(messageEl, rawText) {
+            const body = messageEl.querySelector('.msg-body');
+            if (!body) return;
+            body.innerHTML = rawText ? formatMessageHtml(rawText) : '<span class="text-slate-400">正在生成…</span>';
             Elements.responseDiv.scrollTop = Elements.responseDiv.scrollHeight;
         }
         static showLoading() {
@@ -393,7 +410,7 @@
         }
         static setSubmitState(isSubmitting) {
             Elements.submitBtn.disabled = isSubmitting;
-            Elements.submitBtn.textContent = isSubmitting ? '检索中…' : '发送';
+            Elements.submitBtn.textContent = isSubmitting ? '生成中…' : '发送';
         }
     }
 
@@ -420,6 +437,85 @@
                 throw new Error(extractErrorMessage(data, `请求失败（HTTP ${response.status}）`));
             }
             return data;
+        }
+
+        /**
+         * Stream answer tokens from POST /chat/stream (SSE).
+         * onToken(contentChunk), onDone(), onError(message)
+         */
+        static async submitQueryStream(query, { onToken, onDone, onError } = {}) {
+            const response = await this.makeAuthenticatedRequest('/chat/stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'text/event-stream'
+                },
+                body: JSON.stringify({ query })
+            });
+
+            if (!response.ok) {
+                // Non-SSE error (e.g. 503 JSON)
+                const data = await response.json().catch(() => ({}));
+                throw new Error(extractErrorMessage(data, `请求失败（HTTP ${response.status}）`));
+            }
+            if (!response.body) {
+                throw new Error('浏览器不支持流式读取');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let sawDone = false;
+
+            const handleDataLine = (dataStr) => {
+                const trimmed = dataStr.trim();
+                if (!trimmed || trimmed === '[DONE]') return;
+                let evt;
+                try {
+                    evt = JSON.parse(trimmed);
+                } catch (_) {
+                    // Ignore malformed partial JSON; wait for more
+                    return;
+                }
+                if (evt.type === 'token' && typeof evt.content === 'string') {
+                    if (onToken) onToken(evt.content);
+                } else if (evt.type === 'done') {
+                    sawDone = true;
+                    if (onDone) onDone(evt);
+                } else if (evt.type === 'error') {
+                    const msg = evt.message || '生成回答失败，请稍后重试';
+                    if (onError) onError(msg);
+                    throw new Error(msg);
+                }
+            };
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                // SSE events are separated by a blank line
+                let sep;
+                while ((sep = buffer.indexOf('\n\n')) >= 0) {
+                    const rawEvent = buffer.slice(0, sep);
+                    buffer = buffer.slice(sep + 2);
+                    const lines = rawEvent.split(/\r?\n/);
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            handleDataLine(line.slice(5).trimStart());
+                        }
+                    }
+                }
+            }
+            // Flush trailing buffer
+            if (buffer.trim()) {
+                const lines = buffer.split(/\r?\n/);
+                for (const line of lines) {
+                    if (line.startsWith('data:')) {
+                        handleDataLine(line.slice(5).trimStart());
+                    }
+                }
+            }
+            if (!sawDone && onDone) onDone({});
         }
 
         static async generateSummary() {
@@ -554,16 +650,45 @@
             UIManager.addMessage('user', query);
             Elements.chatQuery.value = '';
             const loadingIndicator = UIManager.showLoading();
+            let streamBubble = null;
+            let fullText = '';
             try {
-                const data = await APIClient.submitQuery(query);
-                loadingIndicator.remove();
-                UIManager.addMessage('assistant', extractAnswer(data));
+                await APIClient.submitQueryStream(query, {
+                    onToken: (chunk) => {
+                        if (!streamBubble) {
+                            loadingIndicator.remove();
+                            streamBubble = UIManager.beginAssistantStream();
+                            fullText = '';
+                        }
+                        fullText += chunk;
+                        UIManager.updateAssistantStream(streamBubble, fullText);
+                    },
+                    onDone: () => {
+                        if (loadingIndicator.parentNode) loadingIndicator.remove();
+                        if (!streamBubble) {
+                            streamBubble = UIManager.beginAssistantStream();
+                            UIManager.updateAssistantStream(streamBubble, fullText || '暂无回答');
+                        } else {
+                            UIManager.updateAssistantStream(streamBubble, fullText || '暂无回答');
+                        }
+                    },
+                    onError: (message) => {
+                        if (loadingIndicator.parentNode) loadingIndicator.remove();
+                        if (streamBubble) {
+                            UIManager.updateAssistantStream(streamBubble, message);
+                        }
+                    }
+                });
             } catch (error) {
-                loadingIndicator.remove();
+                if (loadingIndicator.parentNode) loadingIndicator.remove();
                 console.error('Query error:', error);
                 let errorMessage = error.message || '出错了，请重试。';
                 if (error.message === '需要登录') errorMessage = '请先登录。';
-                UIManager.addMessage('assistant', errorMessage);
+                if (streamBubble) {
+                    UIManager.updateAssistantStream(streamBubble, errorMessage);
+                } else {
+                    UIManager.addMessage('assistant', errorMessage);
+                }
             } finally {
                 UIManager.setSubmitState(false);
             }

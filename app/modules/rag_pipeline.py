@@ -6,7 +6,7 @@ LangSmith is optional and never required to import or start the app.
 """
 
 import threading
-from typing import Any
+from typing import Any, Iterator
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
@@ -75,6 +75,8 @@ class ChatRAGPipeline:
         self.document_manager = DocumentHandler(self.config, rag_logger)
         self.query_validator = QueryValidator(self.config, rag_logger)
         self.qa_chain = None
+        self.history_aware_retriever = None
+        self.document_chain = None
         self.chat_history = None
         self._chain_lock = threading.Lock()
         self._history_lock = threading.Lock()
@@ -149,6 +151,8 @@ class ChatRAGPipeline:
                 }
             )
 
+            self.history_aware_retriever = history_aware_retriever
+            self.document_chain = document_chain
             self.qa_chain = input_validator | base_qa_chain | output_validator
             rag_logger.info("RAG QA chain initialization completed")
 
@@ -208,6 +212,116 @@ class ChatRAGPipeline:
             }
 
 
+    def stream_completion(
+        self, query: str, user_metadata: dict[str, Any] | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """
+        Stream final answer tokens over SSE-friendly event dicts.
+
+        Wire protocol (formatted as SSE in the API layer):
+          data: {"type":"token","content":"..."}
+          data: {"type":"done"}
+          data: {"type":"error","message":"..."}
+
+        Practical RAG streaming path:
+          1) Validate input + history-aware retrieval (non-stream)
+          2) Stream only the stuff-documents / answer LLM via .stream()
+        """
+        rag_logger.info(f"Streaming chat query, length: {len(query)}")
+
+        if not is_llm_configured():
+            raise LLMNotConfigured("尚未配置大模型 API Key")
+        if not is_vectorstore_ready():
+            rag_logger.info("Vectorstore missing; attempting one-time ingest")
+
+        self._initialize_qa_chain()
+
+        current_run = get_current_run_tree()
+        if current_run and user_metadata:
+            current_run.metadata["user_metadata"] = user_metadata
+
+        try:
+            validated_query = self.query_validator.validate_query_input(query)
+        except ValueError as validation_error:
+            rag_logger.warning(f"Query validation failed: {validation_error!s}")
+            yield {"type": "token", "content": str(validation_error)}
+            yield {"type": "done", "sources": []}
+            return
+
+        human_appended = False
+        try:
+            with self._history_lock:
+                if self.chat_history is None:
+                    self.chat_history = []
+                self.chat_history.append(HumanMessage(content=validated_query))
+                human_appended = True
+                current_history = self.chat_history.copy()
+
+            # Step 1: retrieval (+ optional history rewrite) — blocking
+            docs = self.history_aware_retriever.invoke(
+                {"input": validated_query, "chat_history": current_history}
+            )
+
+            # Step 2: stream answer LLM only
+            accumulated: list[str] = []
+            for chunk in self.document_chain.stream(
+                {
+                    "input": validated_query,
+                    "chat_history": current_history,
+                    "context": docs,
+                }
+            ):
+                if chunk is None:
+                    continue
+                if isinstance(chunk, dict):
+                    piece = chunk.get("answer") or chunk.get("content") or ""
+                else:
+                    piece = chunk
+                text = piece if isinstance(piece, str) else str(piece)
+                if not text:
+                    continue
+                accumulated.append(text)
+                yield {"type": "token", "content": text}
+
+            full_answer = "".join(accumulated)
+            validated_answer = self.query_validator.validate_response_output(
+                full_answer
+            )
+            # Guardrails may rewrite the stored answer; client already saw streamed text.
+            with self._history_lock:
+                self.chat_history.append(AIMessage(content=validated_answer))
+
+            rag_logger.info("Streaming chat completion finished successfully")
+            yield {"type": "done", "sources": docs if isinstance(docs, list) else []}
+
+        except (LLMNotConfigured, VectorStoreNotReady):
+            if human_appended:
+                with self._history_lock:
+                    if (
+                        self.chat_history
+                        and isinstance(self.chat_history[-1], HumanMessage)
+                        and self.chat_history[-1].content == validated_query
+                    ):
+                        self.chat_history.pop()
+            raise
+        except Exception as unexpected_error:
+            rag_logger.error(
+                f"Unexpected error in streaming chat ({type(unexpected_error).__name__}): {unexpected_error!s}"
+            )
+            if human_appended:
+                with self._history_lock:
+                    if (
+                        self.chat_history
+                        and isinstance(self.chat_history[-1], HumanMessage)
+                        and self.chat_history[-1].content == validated_query
+                    ):
+                        self.chat_history.pop()
+            formatted_fallback = self.config.chat_fallback_response.format(
+                candidate_name=self.config.candidate.name
+            )
+            yield {"type": "error", "message": formatted_fallback}
+
+
 def get_chat_pipeline() -> ChatRAGPipeline:
     rag_logger.info("get_chat_pipeline invoked")
     return ChatRAGPipeline()
@@ -219,6 +333,14 @@ def get_chat_completion(
     rag_logger.info("get_chat_completion invoked")
     pipeline = get_chat_pipeline()
     return pipeline.get_completion(query, user_metadata)
+
+
+def get_chat_stream(
+    query: str, user_metadata: dict[str, Any] | None = None
+) -> Iterator[dict[str, Any]]:
+    rag_logger.info("get_chat_stream invoked")
+    pipeline = get_chat_pipeline()
+    return pipeline.stream_completion(query, user_metadata)
 
 
 if __name__ == "__main__":
