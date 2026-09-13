@@ -49,7 +49,7 @@ logging:
   analytics_enabled: true
 
 data:
-  cv_path: "data/CV_Demo.pdf"
+  cv_path: "data/CV_王皓月.pdf"
   about_me_path: "data/about_me.md"
   vector_db_path: "data/vector_db"
   analytics_log_path: "data/analytics.log"
@@ -57,11 +57,11 @@ data:
 # === 候选人信息（请改成你自己的） ===
 
 candidate:
-  name: "你的姓名"
-  headline: "求职方向 / 一句话介绍"
-  email: "your.email@example.com"
-  linkedin: "https://linkedin.com/in/your-profile"
-  github: "https://github.com/your-username"
+  name: "王皓月"
+  headline: "AI应用开发实习生"
+  email: "19271721799@163.com"
+  linkedin: ""
+  github: "https://github.com/lucianwhy"
   scholar: ""
 
 # 默认公开访问：留空即可。需要邀请码时再填写。
