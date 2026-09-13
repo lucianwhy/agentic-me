@@ -16,8 +16,10 @@ rate_limit:
 llm:
   timeout: 30
 
-invite_codes:
-  PROD2024:
-    company: "Production User"
-    recruiter: "Recruiter"
-    active: true
+# 默认公开访问。如需邀请码，取消注释并填写：
+# invite_codes:
+#   PROD2024:
+#     company: "某公司招聘"
+#     recruiter: "招聘负责人"
+#     active: true
+invite_codes: {}

@@ -1,47 +1,63 @@
-# Professional Profile: John Doe
+# 关于我（蒸馏模板）
 
-John Doe is a results-driven software engineer specializing in full-stack web development, cloud infrastructure, and AI/ML systems. He combines deep technical expertise with practical experience in DevOps, system architecture, and scalable application development.
+请按下列章节填写。ChatCV 会把它和 `data/` 目录下的简历 PDF 一起写入向量库，供招聘方提问。
+示例文字请全部替换成你自己的真实信息，不要留占位句上线。
 
-## Academic Background
+## 简介
 
-John holds a Master's degree in Computer Science with a focus on machine learning and distributed systems. His academic work demonstrates expertise in bridging theoretical computer science concepts with practical software engineering applications.
+我是「你的姓名」，目前方向是「后端 / 全栈 / 数据 / 算法 / …」。
+擅长把业务问题拆成可落地的系统，最近在做「一句话概括的核心工作」。
+希望加入「目标行业 / 岗位类型」，在「希望发挥的能力」上持续做出可量化结果。
 
-## Professional Approach
+## 经历
 
-John approaches software engineering challenges with a strategic, product-oriented mindset. He prioritizes solutions that deliver measurable business value while maintaining technical excellence and long-term maintainability. His work spans the complete software development lifecycle, from initial requirements gathering through design, implementation, testing, and production deployment.
+### 公司或组织名称｜职位｜2023.07 – 至今
 
-## Technical Philosophy
+- 负责「业务/系统」，服务「用户量或规模」，主导「你做的事」。
+- 通过「方法/技术」把「指标」从 A 做到 B。
+- 与产品、设计、业务协作，推动「上线/复盘/规范」落地。
 
-John believes in building robust, well-tested systems that solve real problems. He actively evaluates emerging technologies and integrates only those that provide clear value. His approach emphasizes:
+### 上一份经历｜职位｜2021.07 – 2023.06
 
-- Rigorous testing methodologies and clean, maintainable code
-- Scalable architecture design with comprehensive monitoring and observability
-- Clear technical documentation and knowledge sharing with team members
-- Continuous learning and adaptation to new technologies and methodologies
+- 参与或主导「项目」，技术栈为「语言 / 框架 / 云」。
+- 解决过「具体难题」，结果是「延迟下降 / 成本下降 / 稳定性提升」。
 
-## Core Competencies
+## 项目
 
-**Full-Stack Development:** Expertise in modern web frameworks, API design, database optimization, and responsive user interface development.
+### 项目名称一（可公开的代表作）
 
-**Cloud & DevOps:** Experience with containerization, CI/CD pipelines, infrastructure as code, and cloud-native application deployment across major platforms.
+- 背景：要解决什么问题。
+- 角色：你负责哪一段（设计 / 实现 / 上线 / 运营）。
+- 技术：例如 FastAPI、PostgreSQL、Redis、Docker。
+- 成果：能对外说的数字或质变（上线周期、QPS、转化、节省成本）。
+- 链接：GitHub / 演示地址（可选）。
 
-**AI/ML Integration:** Practical experience integrating machine learning models into production systems, with focus on MLOps and scalable inference architectures.
+### 项目名称二
 
-**System Design:** Strong background in designing scalable, distributed systems with emphasis on reliability, performance, and maintainability.
+- 背景、角色、技术、成果。
 
-## Technical Skills
+## 技能
 
-- **Languages:** Python, JavaScript, TypeScript, Go, SQL
-- **Frameworks:** FastAPI, React, Node.js, Django, Flask
-- **Cloud Platforms:** AWS, Azure, Google Cloud Platform
-- **Databases:** PostgreSQL, MongoDB, Redis, Elasticsearch
-- **Tools:** Docker, Kubernetes, Git, Linux, Terraform
+- **语言：** Python、TypeScript、SQL
+- **框架：** FastAPI、React、…
+- **数据与中间件：** PostgreSQL、Redis、…
+- **工程：** Git、Linux、Docker、CI/CD
+- **领域：** 例如 RAG / 后端架构 / 数据管道（据实填写）
+- **语言能力：** 中文（母语）、英语（读写 / 口语水平）
 
-## Experience Highlights
+## FAQ
 
-- Led development of microservices architecture serving 100K+ daily active users
-- Implemented CI/CD pipelines reducing deployment time by 75%
-- Designed and built real-time analytics platform processing 1M+ events per day
-- Contributed to open-source projects with 1000+ GitHub stars
+**问：你目前在看什么样的机会？**
+答：例如「北京 / 远程，后端或全栈，能接触业务与系统质量」。
 
-John is passionate about creating software that makes a positive impact and enjoys collaborating with cross-functional teams to deliver innovative solutions.
+**问：最快能入职吗？**
+答：例如「入职期 X 周，可提前沟通到岗时间」。
+
+**问：简历里没写到的项目可以问吗？**
+答：可以。若这里和 PDF 都没有写到，助手会明确说资料不足，而不是编造。
+
+**问：如何联系你？**
+答：邮件 your.email@example.com，或通过页面上的 LinkedIn / GitHub。
+
+**问：你希望招聘方先看哪三段经历？**
+答：列出最能代表你的 2–3 个项目或职责，方便对方直接提问。

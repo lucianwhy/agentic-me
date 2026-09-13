@@ -1,11 +1,12 @@
 import re
-from app.config import AppConfig
 from logging import Logger
+
+from app.config import AppConfig
 
 # Optional Guardrails integration
 try:
     from guardrails import Guard
-    from guardrails.hub import ToxicLanguage, ProfanityFree, ReadingTime
+    from guardrails.hub import ProfanityFree, ReadingTime, ToxicLanguage
 
     GUARDRAILS_AVAILABLE = True
 except ImportError:
@@ -160,7 +161,7 @@ class QueryValidator:
                 mock_guard.validate(response)
             return response
         except Exception as e:
-            self.logger.warning(f"Response validation failed: {str(e)}")
+            self.logger.warning(f"Response validation failed: {e!s}")
             return self.config.chat_fallback_response
 
 
@@ -223,9 +224,11 @@ class InputValidator:
             r"qualifikationen|erfahrung|anforderungen"
             r")\b"
         )
+        chinese_keywords = r"(职位|岗位|职责|任职|要求|技能|经验|招聘|工作内容)"
         if not (
             re.search(english_keywords, text, re.IGNORECASE)
             or re.search(german_keywords, text, re.IGNORECASE)
+            or re.search(chinese_keywords, text)
         ):
             raise ValueError(
                 "Job description text must contain key sections like 'experience', 'position', 'role', etc."

@@ -1,12 +1,13 @@
-# Core configuration for ChatCV - English comments and clear structure
+# ChatCV 核心配置
 llm:
-  provider: "openai"
-  model: "gpt-4o-mini" # eg. "gpt-4o-mini" or "llama3.2"
+  provider: "openai"          # openai（含 DeepSeek 等兼容接口）或 ollama
+  model: "gpt-4o-mini"        # 也可用 deepseek-chat / qwen-plus 等
   temperature: 0.1
   timeout: 60
+  base_url: null              # 也可通过 OPENAI_BASE_URL / LLM_BASE_URL 覆盖
 
 ollama:
-  endpoint: "http://ollama:11434"
+  endpoint: "http://localhost:11434"
   models: "llama3.2"
   timeout: 120
 
@@ -15,6 +16,7 @@ embedding:
   model: "text-embedding-3-small"
   chunk_size: 1000
   chunk_overlap: 200
+  base_url: null
 
 vectorstore:
   provider: "chroma"
@@ -44,109 +46,102 @@ logging:
   analytics_enabled: true
 
 data:
-  # CV file path
   cv_path: "data/CV_Demo.pdf"
   about_me_path: "data/about_me.md"
   vector_db_path: "data/vector_db"
   analytics_log_path: "data/analytics.log"
 
-# === Personalized Information ===
+# === 候选人信息（请改成你自己的） ===
 
 candidate:
-  name: "John Doe"
-  email: "jhon.doe@example.com"
-  linkedin: "https://linkedin.com/in/jhon-doe"
-  github: "https://github.com/jhon-doe"
+  name: "你的姓名"
+  headline: "求职方向 / 一句话介绍"
+  email: "your.email@example.com"
+  linkedin: "https://linkedin.com/in/your-profile"
+  github: "https://github.com/your-username"
+  scholar: ""
 
+# 默认公开访问：留空即可。需要邀请码时再填写。
+invite_codes: {}
 
-# === RAG & CHAT PROMPTS ===
+# === RAG 对话提示词 ===
 chat_system_prompt: |
-  You are a helpful AI assistant for answering questions about {candidate_name}'s professional background and experience.
+  你是 {candidate_name} 的智能简历助手，面向招聘方用中文介绍 TA 的背景。
 
-  Your role is to provide accurate, relevant information based strictly on the provided context about {candidate_name}'s:
-  - Professional experience and career history
-  - Technical skills and expertise
-  - Educational background and qualifications
-  - Research work and publications
-  - Projects and achievements
+  请严格依据下方检索到的资料回答，涵盖：
+  - 工作经历与职业发展
+  - 项目经验与成果
+  - 技能栈与能力边界
+  - 教育背景
+  - FAQ 中已写明的补充说明
 
-  Guidelines:
-  - Only use information from the provided context
-  - Be professional, concise, and objective
-  - If information is not available, clearly state so
-  - Avoid speculation or embellishment
-  - Keep responses focused and relevant
-  - Use a helpful but neutral tone
-  "Retrieved context: {{context}}"
+  回答要求：
+  - 只使用提供的资料，不要编造经历、公司或数据
+  - 语气专业、简洁、客观，像一份可转发的人才卡片
+  - 资料不足时明确说「简历里没有写到这一点」
+  - 优先用条目列出关键事实，必要时补一句结论
+  - 默认使用简体中文；对方用英文提问时可改用英文
+  检索到的资料：{{context}}
 
 chat_fallback_response: |
-  I apologize, but I'm unable to provide a response at the moment.
-  This could be due to:
-  - The information not being available in the provided documents
-  - A temporary system issue
-  - The query being outside my scope of knowledge about {candidate_name}'s professional background
+  抱歉，暂时无法回答这个问题。可能的原因：
+  - 简历或「关于我」文档里没有对应信息
+  - 模型服务暂时不可用
+  - 问题超出了 {candidate_name} 的职业背景范围
 
-  Please try rephrasing your question or ask about specific aspects of {candidate_name}'s experience, skills, or background.
+  请换一种问法，或询问经历、项目、技能、教育背景。
 
-conversation_history_prompt: "Given the conversation context, generate a search query for relevant information about {candidate_name}'s background."
+conversation_history_prompt: "结合以上对话，生成一条用于检索 {candidate_name} 背景资料的搜索查询。"
 
-# === SUMMARY GENERATION PROMPTS ===
+# === 摘要提示词 ===
 summary_prompt_template: |
-  Write a concise professional summary of the following candidate information for {candidate_name}.
+  请用中文为 {candidate_name} 写一份 150–300 字的专业摘要，面向招聘方。
 
-  Context: {{context}}
+  资料：{{context}}
 
-  Focus on:
-  - Key technical skills and expertise areas
-  - Professional achievements and notable projects
-  - Educational background and qualifications
-  - Professional attributes and working style
-  - Domain expertise and industry experience
+  请突出：
+  - 核心技能与方向
+  - 代表性项目与可量化成果
+  - 教育与资质
+  - 工作风格与领域经验
 
-  Guidelines:
-  - Keep the summary professional and objective
-  - Highlight the most relevant qualifications
-  - Use clear, concise language
-  - Structure the content logically
-  - Avoid speculation or embellishment
-  - Aim for 150-300 words
+  要求客观、结构化、不夸大、不编造。
 
-# === JOB MATCHING PROMPTS ===
-job_matching_system_prompt: "You are an expert technical recruiter and career advisor with deep knowledge of software engineering and data science roles."
+# === 岗位匹配提示词 ===
+job_matching_system_prompt: "你是资深技术招聘顾问，请用中文评估候选人与岗位的匹配度，结论要可执行。"
 
 job_matching_analysis_prompt: |
-  Analyze how well {candidate_name} matches the provided job description.
+  请分析 {candidate_name} 与下列岗位的匹配情况。
 
-  **Context (Job Description and {candidate_name}'s Information):**
+  **岗位描述与 {candidate_name} 的资料：**
   {{context}}
 
-  IMPORTANT: If the job description is incomplete, nonsensical, or lacks key responsibilities or skill requirements, respond with this structure:
-  - Overall Match Score: N/A
-  - Justification: The job description appears incomplete or invalid.
+  如果岗位描述残缺、无职责或无技能要求，请按下面结构回答：
+  - 综合匹配分：N/A
+  - 说明：岗位描述不完整或无效。
+  - 同时给出 {candidate_name} 的通用优势与可能缺口。
 
-  - Here is a summary of general Strengths and Possible Gaps of {candidate_name}:
+  **请按此结构输出：**
 
-  **Required Output Structure:**
+  ## {candidate_name} 的岗位匹配评估
 
-  ## Match Assessment for {candidate_name}
+  **综合匹配分：X/10**
 
-  **Overall Match Score: X/10**
+  **评分说明：**
+  简要说明分数依据。
 
-  **Justification:**
-  Brief explanation of the score.
+  ### 匹配优势
+  - （列出 3–4 条最强匹配点）
 
-  ### Key Strengths
-  - [List 3-4 strongest matching points]
+  ### 可能缺口
+  - （列出待补齐的方面）
 
-  ### Potential Gaps
-  - [List areas for development]
+  ### 技能对齐
+  - （技术栈对照分析）
 
-  ### Technical Skills Alignment
-  - [Detailed technical analysis]
+  ### 招聘建议
+  **[非常匹配 / 较为匹配 / 一般匹配 / 匹配有限]**
+  - （2–3 句理由）
 
-  ### Recommendation
-  **[Strong Fit / Good Fit / Moderate Fit / Limited Fit]**
-  - [2-3 sentence rationale]
-
-  ### Interview Questions
-  - [3-4 specific questions to explore during interview]
+  ### 建议面试问题
+  - （3–4 个可深挖的问题）

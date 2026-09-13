@@ -1,81 +1,107 @@
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_ollama import OllamaEmbeddings, ChatOllama
+import logging
+import os
+from typing import Any
+
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.config import AppConfig
-import logging
-from typing import Union
+from app.modules.readiness import LLMNotConfigured
 
 
 class ModelProvider:
     """
-    A provider class responsible for initializing and returning language and embedding models
-    based on the given application configuration.
+    Initialize language and embedding models from application configuration.
 
-    Attributes:
-        config (AppConfig): The application configuration containing model settings.
-        logger (logging.Logger): Logger instance for logging information and debug messages.
+    Supports OpenAI and any OpenAI-compatible endpoint (DeepSeek, etc.) via
+    OPENAI_API_KEY + OPENAI_BASE_URL / LLM_BASE_URL. Ollama is an optional
+    extra and is imported only when selected.
     """
 
     def __init__(self, config: AppConfig, logger: logging.Logger):
-        """
-        Initialize the ModelProvider with configuration and logger.
-
-        Args:
-            config (AppConfig): Configuration object with model parameters.
-            logger (logging.Logger): Logger for recording operational messages.
-        """
         self.config = config
         self.logger = logger
 
-    def get_language_model(self) -> Union[ChatOpenAI, ChatOllama]:
-        """
-        Initialize and return the language model instance based on the configuration.
+    def _openai_kwargs(self, *, for_embedding: bool = False) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        api_key = self.config.resolved_api_key()
+        if api_key:
+            kwargs["api_key"] = api_key
 
-        Detects whether to use Ollama or OpenAI language model by inspecting the model name.
+        if for_embedding:
+            base_url = (self.config.embedding.base_url or "").strip() or (
+                self.config.resolved_base_url() or ""
+            )
+        else:
+            base_url = self.config.resolved_base_url() or ""
+        if base_url:
+            kwargs["base_url"] = base_url
+        return kwargs
 
-        Returns:
-            Union[ChatOpenAI, ChatOllama]: An instance of the configured language model.
-        """
-
+    def get_language_model(self) -> Any:
+        """Return the configured chat model. Does not call the network."""
+        provider = str(self.config.llm.provider).lower()
         self.logger.info(
             f"Starting initialization of language model '{self.config.llm.model}'."
         )
-        if "ollama" in str(self.config.llm.provider).lower():
-            self.logger.info(
-                "Detected Ollama language model source based on model name."
-            )
+        if "ollama" in provider:
+            self.logger.info("Using optional Ollama language model provider.")
+            try:
+                from langchain_ollama import ChatOllama
+            except ImportError as exc:
+                raise LLMNotConfigured(
+                    "已选择 Ollama，但未安装 langchain-ollama。"
+                    "请执行：pip install langchain-ollama"
+                ) from exc
             return ChatOllama(
                 model=self.config.llm.model,
                 temperature=self.config.llm.temperature,
-            )
-        else:
-            self.logger.info("Detected OpenAI language model source as default.")
-            return ChatOpenAI(
-                model=self.config.llm.model,
-                temperature=self.config.llm.temperature,
-                timeout=self.config.llm.timeout,
+                base_url=self.config.ollama.endpoint,
             )
 
-    def get_embedding_model(self) -> Union[OpenAIEmbeddings, OllamaEmbeddings]:
-        """
-        Initialize and return the embedding model instance based on the configuration.
+        if not self.config.resolved_api_key() and not os.getenv("OPENAI_API_KEY"):
+            raise LLMNotConfigured("尚未配置 OPENAI_API_KEY，无法初始化对话模型。")
 
-        Detects whether to use Ollama or OpenAI embeddings by inspecting the model name.
-
-        Returns:
-            Union[OpenAIEmbeddings, OllamaEmbeddings]: An instance of the configured embedding model.
-        """
-        model_name = str(self.config.embedding.model).lower()
         self.logger.info(
-            f"Starting initialization of embedding model '{self.config.embedding.model}'."
+            "Using OpenAI-compatible language model"
+            + (
+                f" at {self.config.resolved_base_url()}"
+                if self.config.resolved_base_url()
+                else ""
+            )
         )
-        if "ollama" in model_name:
-            self.logger.info(
-                "Detected Ollama embedding model source based on model name."
-            )
+        return ChatOpenAI(
+            model=self.config.llm.model,
+            temperature=self.config.llm.temperature,
+            timeout=self.config.llm.timeout,
+            **self._openai_kwargs(for_embedding=False),
+        )
+
+    def get_embedding_model(self) -> Any:
+        """Return the configured embedding model. Does not call the network."""
+        provider = str(self.config.embedding.provider).lower()
+        model_name = str(self.config.embedding.model)
+        self.logger.info(f"Starting initialization of embedding model '{model_name}'.")
+        if "ollama" in provider or "ollama" in model_name.lower():
+            self.logger.info("Using optional Ollama embedding provider.")
+            try:
+                from langchain_ollama import OllamaEmbeddings
+            except ImportError as exc:
+                raise LLMNotConfigured(
+                    "已选择 Ollama Embedding，但未安装 langchain-ollama。"
+                    "请执行：pip install langchain-ollama"
+                ) from exc
             return OllamaEmbeddings(
-                model=self.config.embedding.model, base_url=self.config.ollama.endpoint
+                model=self.config.embedding.model,
+                base_url=self.config.ollama.endpoint,
             )
-        else:
-            self.logger.info("Detected OpenAI embedding model source as default.")
-            return OpenAIEmbeddings(model=self.config.embedding.model)
+
+        if not self.config.resolved_api_key() and not os.getenv("OPENAI_API_KEY"):
+            raise LLMNotConfigured(
+                "尚未配置 OPENAI_API_KEY，无法初始化 Embedding 模型。"
+            )
+
+        self.logger.info("Using OpenAI-compatible embedding model.")
+        return OpenAIEmbeddings(
+            model=self.config.embedding.model,
+            **self._openai_kwargs(for_embedding=True),
+        )

@@ -1,240 +1,181 @@
 <!DOCTYPE html>
-
-<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>ChatCV - Interactive Resume Assistant</title> <script src="https://cdn.tailwindcss.com"></script> <meta name="description" content="Interactive AI-powered resume assistant"> </head> <body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4"> <!-- Login Modal --> <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"> <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4"> <h2 class="text-2xl font-bold mb-6 text-center">Access Required</h2> <p class="text-gray-600 mb-6 text-center">Please enter your invite code to access ChatCV</p> <form id="login-form"> <input type="text" id="invite-code" placeholder="Enter invite code" class="w-full border rounded p-3 mb-4 text-center font-mono" maxlength="50" pattern="[A-Za-z0-9\-_]+" title="Only letters, numbers, hyphens and underscores allowed" required autocomplete="off" > <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition-colors" > Access ChatCV </button> </form> <div id="login-error" class="mt-4 text-red-500 text-center hidden" role="alert"></div> </div> </div>
-<!-- User Info Bar -->
-<div id="user-info" class="w-full max-w-6xl mb-4 bg-white rounded-lg p-3 shadow-md hidden">
-    <div class="flex justify-between items-center">
-        <span id="user-company" class="font-semibold"></span>
-        <button id="logout-btn" class="text-red-500 hover:text-red-700 transition-colors">Logout</button>
-    </div>
-</div>
-
-<div class="flex flex-col md:flex-row gap-6 w-full max-w-6xl mb-6">
-    <!-- Introduction Section -->
-    <div class="flex-1 bg-white shadow-md rounded-lg p-6">
-        <h1 class="text-2xl font-bold mb-4">ChatCV Interactive Resume</h1>
-        <p class="mb-2">This application demonstrates an AI-powered resume interface using retrieval-augmented generation.</p>
-        <p class="mb-2">Explore a professional background through natural language queries.</p>
-        <p class="mb-2">Features available:</p>
-        <ul class="list-disc list-inside mb-4">
-            <li>Natural language queries about experience and skills</li>
-            <li>Automated professional summary generation</li>
-            <li>AI-powered job description matching with scoring</li>
-            <li>Contextual responses based on CV content</li>
-        </ul>
-        <p class="mb-2 font-semibold">Sample Questions:</p>
-        <ul class="list-disc list-inside mb-4">
-            <li>"What experience does {{ candidate_name }} have with machine learning operations?"</li>
-            <li>"Describe {{ candidate_name }}'s research background"</li>
-            <li>"What cloud technologies has {{ candidate_name }} worked with?"</li>
-        </ul>
-
-        <!-- Disclaimer -->
-        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h3 class="text-sm font-semibold text-yellow-800 mb-1">Important Notice</h3>
-            <p class="text-xs text-yellow-700">
-                This is a demonstration system. AI responses may not always be completely accurate and may need clarification or additional context.
-            </p>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ candidate_name }} · ChatCV 智能简历</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="description" content="{{ candidate_name }} 的智能简历卡片，可直接提问经历、项目与技能。">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        card: "#f8f5f0",
+                        ink: "#1f2937",
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-stone-100 min-h-screen text-slate-800">
+    <!-- 邀请码登录：公开模式默认隐藏 -->
+    <div id="login-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl">
+            <h2 class="text-2xl font-bold mb-3 text-center">需要邀请码</h2>
+            <p class="text-slate-500 mb-6 text-center">请输入邀请码后访问这份智能简历</p>
+            <form id="login-form">
+                <input type="text" id="invite-code" placeholder="邀请码"
+                       class="w-full border rounded-lg p-3 mb-4 text-center font-mono"
+                       maxlength="50" pattern="[A-Za-z0-9\-_]+" required autocomplete="off">
+                <button type="submit"
+                        class="w-full bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg">
+                    进入
+                </button>
+            </form>
+            <div id="login-error" class="mt-4 text-red-500 text-center hidden" role="alert"></div>
         </div>
     </div>
 
-    <!-- Profile Sidebar -->
-    <div class="md:w-1/4 flex flex-col items-center bg-white p-6 rounded-lg shadow-md mt-6 md:mt-0">
-        <img src="/static/default-avatar.png" alt="Profile Picture" class="w-24 h-24 rounded-full mb-4">
-        <h2 class="text-xl font-bold mb-2">{{ candidate_name }}</h2>
+    <div class="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        <div id="user-info" class="hidden bg-white rounded-xl p-3 shadow-sm border border-stone-200">
+            <div class="flex justify-between items-center">
+                <span id="user-company" class="font-medium"></span>
+                <button id="logout-btn" class="text-red-500 hover:text-red-700 text-sm">退出</button>
+            </div>
+        </div>
 
-        <nav class="flex flex-col items-center space-y-2">
-            <a href="mailto:{{ candidate_email }}"
-               class="flex items-center gap-2 text-blue-500 hover:text-blue-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M2 4a2 2 0 012-2h16a2 2 0 012 2v16a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm2 0v.511l8 5.01 8-5.01V4H4zm0 2.489V20h16V6.489l-8 5.01-8-5.01z"/>
-                </svg>
-                <span>Email</span>
-            </a>
-
-            <a href="{{ candidate_linkedin }}"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="flex items-center gap-2 text-blue-500 hover:text-blue-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-10h3v10zm-1.5-11.268c-.966 0-1.75-.783-1.75-1.75s.784-1.75 1.75-1.75 1.75.783 1.75 1.75-.784 1.75-1.75 1.75zm15.5 11.268h-3v-5.604c0-1.337-.025-3.063-1.868-3.063-1.868 0-2.154 1.459-2.154 2.968v5.699h-3v-10h2.881v1.367h.041c.401-.759 1.379-1.559 2.838-1.559 3.034 0 3.594 1.997 3.594 4.59v5.602z"/>
-                </svg>
-                <span>LinkedIn</span>
-            </a>
-
-            <a href="{{ candidate_github }}"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="flex items-center gap-2 text-blue-500 hover:text-blue-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0C5.371 0 0 5.373 0 12c0 5.301 3.438 9.8 8.207 11.387.6.111.793-.26.793-.577v-2.234c-3.338.725-4.033-1.416-4.033-1.416-.547-1.387-1.338-1.756-1.338-1.756-1.09-.745.083-.729.083-.729 1.205.084 1.838 1.235 1.838 1.235 1.07 1.834 2.809 1.304 3.495.997.107-.776.418-1.305.761-1.605-2.665-.304-5.467-1.334-5.467-5.933 0-1.311.467-2.381 1.235-3.221-.123-.303-.535-1.527.117-3.176 0 0 1.008-.323 3.301 1.23.957-.266 1.984-.398 3.003-.403 1.018.005 2.047.137 3.006.403 2.291-1.553 3.297-1.23 3.297-1.23.653 1.649.241 2.873.118 3.176.77.84 1.232 1.91 1.232 3.221 0 4.609-2.807 5.625-5.479 5.921.43.371.823 1.102.823 2.222v3.293c0 .32.192.694.801.576C20.565 21.796 24 17.298 24 12c0-6.627-5.373-12-12-12z"/>
-                </svg>
-                <span>GitHub</span>
-            </a>
-
-            <a href="https://scholar.google.com/citations?user={{ candidate_name }}"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="flex items-center gap-2 text-blue-500 hover:text-blue-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2L1 7l11 5 9-4.09V17h2V7l-11-5zm0 13c-3.86 0-7 1.79-7 4v3h14v-3c0-2.21-3.14-4-7-4z"/>
-                </svg>
-                <span>Google Scholar</span>
-            </a>
-
-            <a href="{{ cv_path }}"
-               download="{{ candidate_name }}_CV.pdf"
-               class="flex items-center gap-2 mt-4 text-blue-500 hover:text-blue-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span>Download CV</span>
-            </a>
-        </nav>
-    </div>
-</div>
-
-<!-- Main Application -->
-<main class="bg-white shadow-md rounded-lg p-6 w-full max-w-6xl flex flex-col">
-    <div class="flex flex-col md:flex-row gap-6 w-full">
-        <div class="flex-1 flex flex-col">
-            <div class="flex flex-col md:flex-row gap-6">
-                <!-- Chat Interface -->
-                <section class="flex-1 flex flex-col">
-                    <h2 class="text-xl font-semibold mb-4">Interactive Chat Interface</h2>
-                    <div id="response"
-                         class="mb-4 space-y-4 w-full overflow-y-auto max-h-[500px] border rounded-lg p-4 bg-gray-50"
-                         role="log"
-                         aria-live="polite"
-                         aria-label="Conversation history">
-                    </div>
-
-                    <form id="chat-form" class="mt-2">
-                        <label for="chat-query" class="sr-only">Enter your question</label>
-                        <textarea id="chat-query"
-                                  name="query"
-                                  rows="3"
-                                  placeholder="Enter your question about {{ candidate_name }}'s background..."
-                                  class="w-full border rounded p-2 resize-none"
-                                  maxlength="1000"
-                                  required
-                                  aria-describedby="input-help rate-limit-warning">
-                        </textarea>
-
-                        <div class="flex gap-2 mt-2">
-                            <button type="submit"
-                                    id="submit-btn"
-                                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50">
-                                Submit Query
-                            </button>
-                            <button id="clear-chat"
-                                    type="button"
-                                    class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition-colors">
-                                Clear History
-                            </button>
-                        </div>
-                    </form>
-
-                    <p id="input-help" class="text-sm text-gray-500 mt-2">
-                        Press Enter to submit, Shift+Enter for new line. Maximum 1000 characters.
+        <!-- 个人卡片 -->
+        <header class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+            <div class="h-2 bg-gradient-to-r from-slate-800 via-amber-700 to-stone-400"></div>
+            <div class="p-6 md:p-8 flex flex-col md:flex-row gap-6">
+                <div class="flex flex-col items-center md:items-start md:w-56 shrink-0">
+                    <img src="/static/default-avatar.png" alt="{{ candidate_name }}"
+                         class="w-28 h-28 rounded-full object-cover border-4 border-stone-100 shadow">
+                    <h1 class="text-2xl font-bold mt-4 text-center md:text-left">{{ candidate_name }}</h1>
+                    {% if candidate_headline %}
+                    <p class="text-sm text-slate-500 mt-1 text-center md:text-left">{{ candidate_headline }}</p>
+                    {% endif %}
+                    <nav class="mt-4 flex flex-col gap-2 text-sm w-full">
+                        <a href="mailto:{{ candidate_email }}" class="text-slate-700 hover:text-amber-800">邮箱 · {{ candidate_email }}</a>
+                        <a href="{{ candidate_linkedin }}" target="_blank" rel="noopener noreferrer" class="text-slate-700 hover:text-amber-800">LinkedIn</a>
+                        <a href="{{ candidate_github }}" target="_blank" rel="noopener noreferrer" class="text-slate-700 hover:text-amber-800">GitHub</a>
+                        {% if candidate_scholar %}
+                        <a href="{{ candidate_scholar }}" target="_blank" rel="noopener noreferrer" class="text-slate-700 hover:text-amber-800">学术主页</a>
+                        {% endif %}
+                        <a href="{{ cv_path }}" download="{{ candidate_name }}_简历.pdf"
+                           class="mt-2 inline-flex items-center justify-center rounded-lg bg-slate-800 text-white px-3 py-2 hover:bg-slate-700">
+                            下载简历 PDF
+                        </a>
+                    </nav>
+                </div>
+                <div class="flex-1 space-y-4">
+                    <p class="text-lg font-semibold">和简历对话</p>
+                    <p class="text-slate-600 leading-relaxed">
+                        这是 {{ candidate_name }} 的智能简历卡片。你可以直接用中文提问经历、项目、技能或岗位匹配，
+                        回答只依据简历 PDF 与「关于我」文档，不会编造。
                     </p>
-
-                    <div id="rate-limit-warning"
-                         class="hidden mt-2 p-2 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded"
-                         role="alert">
-                        Rate limit active. Please wait before submitting another query.
+                    <div>
+                        <p class="text-sm font-medium text-slate-500 mb-2">可以这样问</p>
+                        <div class="flex flex-wrap gap-2" id="suggested-questions">
+                            <button type="button" class="suggest-q px-3 py-1.5 rounded-full bg-stone-100 hover:bg-amber-50 border border-stone-200 text-sm"
+                                    data-q="用 5 句话介绍一下 {{ candidate_name }} 的背景和求职方向。">一句话介绍背景</button>
+                            <button type="button" class="suggest-q px-3 py-1.5 rounded-full bg-stone-100 hover:bg-amber-50 border border-stone-200 text-sm"
+                                    data-q="{{ candidate_name }} 最近一段经历里最能拿出手的成果是什么？">最近的代表性成果</button>
+                            <button type="button" class="suggest-q px-3 py-1.5 rounded-full bg-stone-100 hover:bg-amber-50 border border-stone-200 text-sm"
+                                    data-q="{{ candidate_name }} 做过哪些项目？分别用了什么技术、结果如何？">项目与技术栈</button>
+                            <button type="button" class="suggest-q px-3 py-1.5 rounded-full bg-stone-100 hover:bg-amber-50 border border-stone-200 text-sm"
+                                    data-q="{{ candidate_name }} 的核心技能有哪些？哪些是深入用过的？">核心技能</button>
+                            <button type="button" class="suggest-q px-3 py-1.5 rounded-full bg-stone-100 hover:bg-amber-50 border border-stone-200 text-sm"
+                                    data-q="如果我是招聘方，最该追问 {{ candidate_name }} 哪三个问题？">给招聘方的追问</button>
+                        </div>
                     </div>
-                </section>
+                    <p class="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                        模型回答仅供参考。关键事实请对照下载的 PDF 或直接联系本人确认。
+                    </p>
+                </div>
+            </div>
+        </header>
 
-                <!-- Summary Section -->
-                <section class="flex-1 flex flex-col">
-                    <h2 class="text-xl font-semibold mb-4">Summary</h2>
-                    <button id="summary-button"
-                            class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mb-4 transition-colors">
-                        Generate Summary
-                    </button>
-                    <div id="summary-response"
-                         class="mt-4 p-4 bg-gray-100 rounded overflow-y-auto max-h-[500px] border"
-                         role="region"
-                         aria-label="Generated summary">
-                    </div>
-                </section>
+        <main class="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+            <h2 class="text-xl font-semibold mb-4">对话</h2>
+            <div id="response"
+                 class="mb-4 space-y-3 w-full overflow-y-auto min-h-[220px] max-h-[480px] border border-stone-200 rounded-xl p-4 bg-stone-50"
+                 role="log" aria-live="polite" aria-label="对话记录">
+                <div class="text-slate-500 text-sm">你好，我是 {{ candidate_name }} 的简历助手。点上面的问题，或直接输入你的问题。</div>
             </div>
 
-            <!-- Job Matching Section -->
-            <section class="mt-8 p-6 bg-blue-50 rounded-lg border">
-                <h2 class="text-xl font-semibold mb-4">Job Matching</h2>
-                <p class="text-gray-600 mb-4">
-                    Enter a job description to get an AI-powered assessment of candidate fit.
-                </p>
-
-                <div class="space-y-4">
-                    <form id="job-matching-form">
-                        <!-- Text Input Only -->
-                        <div id="text-input-section" class="input-section">
-                            <label for="job-text" class="block text-sm font-medium text-gray-700 mb-2">
-                                Job Description Text
-                            </label>
-                            <textarea id="job-text"
-                                      name="text"
-                                      rows="6"
-                                      placeholder="Paste the job description here..."
-                                      class="w-full border rounded p-3 resize-none"
-                                      maxlength="5000"
-                                      required>
-                            </textarea>
-                            <p class="text-sm text-gray-500 mt-1">Maximum 5000 characters, minimum 50 characters</p>
-                        </div>
-
-                        <button type="submit"
-                                id="analyze-job-btn"
-                                class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition-colors disabled:opacity-50">
-                            Analyze Job Match
-                        </button>
-                    </form>
+            <form id="chat-form">
+                <label for="chat-query" class="sr-only">输入问题</label>
+                <textarea id="chat-query" name="query" rows="3"
+                          placeholder="例如：TA 有没有带团队或独立负责过完整项目？"
+                          class="w-full border border-stone-300 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-slate-400"
+                          maxlength="1000" required></textarea>
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <button type="submit" id="submit-btn"
+                            class="bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2 px-5 rounded-lg disabled:opacity-50">
+                        发送
+                    </button>
+                    <button id="clear-chat" type="button"
+                            class="bg-stone-200 hover:bg-stone-300 text-slate-800 font-medium py-2 px-4 rounded-lg">
+                        清空记录
+                    </button>
                 </div>
+            </form>
+            <p id="input-help" class="text-xs text-slate-400 mt-2">Enter 发送，Shift+Enter 换行。最多 1000 字。</p>
+            <div id="rate-limit-warning"
+                 class="hidden mt-2 p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm"
+                 role="alert">发送太频繁，请稍后再试。</div>
+        </main>
 
-                <!-- Results Section -->
+        <section class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+                <h2 class="text-lg font-semibold mb-3">一键摘要</h2>
+                <p class="text-sm text-slate-500 mb-3">生成一份可转发给招聘方的中文专业摘要。</p>
+                <button id="summary-button"
+                        class="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2 px-4 rounded-lg">
+                    生成摘要
+                </button>
+                <div id="summary-response"
+                     class="mt-4 p-4 bg-stone-50 rounded-xl overflow-y-auto max-h-[360px] border border-stone-200 text-sm"
+                     role="region" aria-label="摘要"></div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+                <h2 class="text-lg font-semibold mb-3">岗位匹配</h2>
+                <p class="text-sm text-slate-500 mb-3">粘贴职位描述，评估与 {{ candidate_name }} 的匹配度。</p>
+                <form id="job-matching-form">
+                    <label for="job-text" class="block text-sm font-medium text-slate-700 mb-2">职位描述</label>
+                    <textarea id="job-text" name="text" rows="6"
+                              placeholder="把 JD 粘贴到这里（至少 50 字）..."
+                              class="w-full border border-stone-300 rounded-xl p-3 resize-none"
+                              maxlength="5000" required></textarea>
+                    <button type="submit" id="analyze-job-btn"
+                            class="mt-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2 px-5 rounded-lg disabled:opacity-50">
+                        开始匹配
+                    </button>
+                </form>
                 <div id="job-analysis-results"
-                     class="mt-6 p-4 bg-white rounded border hidden"
-                     role="region"
-                     aria-label="Job matching analysis results">
-                </div>
-            </section>
-        </div>
-    </div>
-</main>
+                     class="mt-4 p-4 bg-stone-50 rounded-xl border border-stone-200 hidden text-sm"
+                     role="region" aria-label="匹配结果"></div>
+            </div>
+        </section>
 
-<!-- Technical Details -->
-<section class="bg-white shadow-md rounded-lg p-6 w-full max-w-6xl mt-6">
-    <h2 class="text-2xl font-bold mb-4">Technical Implementation</h2>
-    <p class="mb-4">
-        This application demonstrates a production-ready retrieval-augmented generation pipeline
-        showcasing modern machine learning operations and deployment practices.
-    </p>
-    <ul class="list-disc list-inside space-y-2">
-        <li><strong>FastAPI:</strong> Production-grade web API backend</li>
-        <li><strong>LangChain:</strong> RAG pipeline orchestration and LLM workflow management</li>
-        <li><strong>ChromaDB:</strong> Vector database for semantic document retrieval</li>
-        <li><strong>Docker:</strong> Containerization and deployment orchestration</li>
-        <li><strong>Azure-Ready:</strong> Cloud deployment with auto-scaling</li>
-        <li><strong>Guardrails:</strong> Response validation and safety constraints</li>
-        <li><strong>Structured Logging:</strong> Application monitoring and analytics</li>
-        <li><strong>Session Management:</strong> Secure authentication and access control</li>
-    </ul>
-</section>
+        <footer class="text-center text-xs text-slate-400 pb-8">
+            ChatCV · 智能简历卡片 · 回答仅基于本人提供的资料
+        </footer>
+    </div>
 
 <script>
-    // Application State
     const AppState = {
         isAuthenticated: false,
         userInfo: null,
         lastRequestTime: 0,
         RATE_LIMIT_MS: 3000,
-        authEnabled: true  // Will be set based on server response
+        authEnabled: false
     };
 
-    // DOM Elements
     const Elements = {
         loginModal: document.getElementById('login-modal'),
         loginForm: document.getElementById('login-form'),
@@ -252,19 +193,20 @@
         rateLimitWarning: document.getElementById('rate-limit-warning')
     };
 
-    // Authentication Management
+    function extractErrorMessage(data, fallback) {
+        if (!data) return fallback;
+        if (typeof data.message === 'string' && data.message) return data.message;
+        if (typeof data.detail === 'string' && data.detail) return data.detail;
+        if (data.detail && typeof data.detail === 'object' && data.detail.message) return data.detail.message;
+        return fallback;
+    }
+
     class AuthManager {
         static async checkStatus() {
             try {
-                const response = await fetch('/auth/status', {
-                    credentials: 'include'
-                });
+                const response = await fetch('/auth/status', { credentials: 'include' });
                 const data = await response.json();
-
-                // Set auth enabled flag
                 AppState.authEnabled = data.auth_enabled !== false;
-
-                // If authentication is disabled, proceed without login
                 if (data.auth_enabled === false) {
                     AppState.isAuthenticated = false;
                     AppState.userInfo = data.user;
@@ -272,7 +214,6 @@
                     UIManager.hideUserInfo();
                     return;
                 }
-
                 if (data.authenticated) {
                     AppState.isAuthenticated = true;
                     AppState.userInfo = data.user;
@@ -283,7 +224,7 @@
                 }
             } catch (error) {
                 console.error('Authentication check failed:', error);
-                UIManager.showLoginModal();
+                UIManager.hideLoginModal();
             }
         }
 
@@ -295,9 +236,7 @@
                     credentials: 'include',
                     body: JSON.stringify({ invite_code: inviteCode })
                 });
-
                 const data = await response.json();
-
                 if (response.ok) {
                     AppState.isAuthenticated = true;
                     AppState.userInfo = data.user;
@@ -305,21 +244,17 @@
                     UIManager.showUserInfo();
                     UIManager.hideError();
                     return { success: true };
-                } else {
-                    return { success: false, error: data.detail || 'Invalid invite code' };
                 }
+                return { success: false, error: data.detail || '邀请码无效' };
             } catch (error) {
                 console.error('Login error:', error);
-                return { success: false, error: 'Login failed. Please try again.' };
+                return { success: false, error: '登录失败，请重试。' };
             }
         }
 
         static async logout() {
             try {
-                await fetch('/auth/logout', {
-                    method: 'POST',
-                    credentials: 'include'
-                });
+                await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
                 AppState.isAuthenticated = false;
                 AppState.userInfo = null;
                 UIManager.hideUserInfo();
@@ -330,81 +265,49 @@
         }
     }
 
-    // UI Management
     class UIManager {
-        static showLoginModal() {
-            Elements.loginModal.classList.remove('hidden');
-        }
-
-        static hideLoginModal() {
-            Elements.loginModal.classList.add('hidden');
-        }
-
+        static showLoginModal() { Elements.loginModal.classList.remove('hidden'); }
+        static hideLoginModal() { Elements.loginModal.classList.add('hidden'); }
         static showUserInfo() {
-            Elements.userCompany.textContent = `Welcome, ${AppState.userInfo.company}`;
+            Elements.userCompany.textContent = `欢迎，${AppState.userInfo.company}`;
             Elements.userInfo.classList.remove('hidden');
         }
-
-        static hideUserInfo() {
-            Elements.userInfo.classList.add('hidden');
-        }
-
+        static hideUserInfo() { Elements.userInfo.classList.add('hidden'); }
         static showError(message) {
             Elements.loginError.textContent = message;
             Elements.loginError.classList.remove('hidden');
         }
-
-        static hideError() {
-            Elements.loginError.classList.add('hidden');
-        }
-
+        static hideError() { Elements.loginError.classList.add('hidden'); }
         static addMessage(role, text) {
             const message = document.createElement('div');
             message.className = role === 'user'
-                ? 'bg-blue-100 text-blue-800 p-3 rounded-lg self-end max-w-[80%] ml-auto'
-                : 'bg-gray-200 text-gray-800 p-3 rounded-lg self-start max-w-[80%]';
-
-            const roleLabel = role === 'user' ? 'You' : 'Assistant';
-            message.innerHTML = `<strong>${roleLabel}:</strong> ${text.replace(/\n/g, '<br>')}`;
-
+                ? 'bg-slate-800 text-white p-3 rounded-xl max-w-[85%] ml-auto'
+                : 'bg-white border border-stone-200 text-slate-800 p-3 rounded-xl max-w-[85%]';
+            const roleLabel = role === 'user' ? '你' : '助手';
+            message.innerHTML = `<strong>${roleLabel}：</strong> ${String(text).replace(/\n/g, '<br>')}`;
             Elements.responseDiv.appendChild(message);
             Elements.responseDiv.scrollTop = Elements.responseDiv.scrollHeight;
         }
-
         static showRateLimit() {
             Elements.rateLimitWarning.classList.remove('hidden');
-            setTimeout(() => {
-                Elements.rateLimitWarning.classList.add('hidden');
-            }, 3000);
+            setTimeout(() => Elements.rateLimitWarning.classList.add('hidden'), 3000);
         }
-
         static setSubmitState(isSubmitting) {
             Elements.submitBtn.disabled = isSubmitting;
-            Elements.submitBtn.textContent = isSubmitting ? 'Processing...' : 'Submit Query';
+            Elements.submitBtn.textContent = isSubmitting ? '思考中…' : '发送';
         }
     }
 
-    // API Communication
     class APIClient {
         static async makeAuthenticatedRequest(url, options = {}) {
-            // If authentication is disabled, make request without auth check
             if (!AppState.authEnabled) {
-                return fetch(url, {
-                    ...options,
-                    credentials: 'include'
-                });
+                return fetch(url, { ...options, credentials: 'include' });
             }
-
-            // If authentication is enabled, check if user is authenticated
             if (!AppState.isAuthenticated) {
                 UIManager.showLoginModal();
-                throw new Error('Authentication required');
+                throw new Error('需要登录');
             }
-
-            return fetch(url, {
-                ...options,
-                credentials: 'include'
-            });
+            return fetch(url, { ...options, credentials: 'include' });
         }
 
         static async submitQuery(query) {
@@ -413,20 +316,20 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query })
             });
-
+            const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                throw new Error(extractErrorMessage(data, `请求失败（HTTP ${response.status}）`));
             }
-
-            return response.json();
+            return data;
         }
 
         static async generateSummary() {
-            const response = await this.makeAuthenticatedRequest('/summary', {
-                method: 'POST'
-            });
-
-            return response.json();
+            const response = await this.makeAuthenticatedRequest('/summary', { method: 'POST' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(extractErrorMessage(data, '摘要生成失败'));
+            }
+            return data;
         }
 
         static async analyzeJobMatch(jobDescription) {
@@ -435,221 +338,138 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: jobDescription })
             });
-
+            const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Analysis failed');
+                throw new Error(extractErrorMessage(data, '匹配分析失败'));
             }
-
-            return response.json();
+            return data;
         }
     }
 
-    // Input Validation
     class InputValidator {
         static validateQuery(query = '') {
-            if (query.trim().length === 0) {
-                return { valid: false, error: 'Query cannot be empty' };
-            }
-
-            if (query.length > 1000) {
-                return { valid: false, error: 'Query too long. Please limit to 1000 characters.' };
-            }
-
+            if (query.trim().length === 0) return { valid: false, error: '问题不能为空' };
+            if (query.length > 1000) return { valid: false, error: '问题过长，请控制在 1000 字以内。' };
             return { valid: true };
         }
-
         static checkRateLimit() {
             const now = Date.now();
-            if (now - AppState.lastRequestTime < AppState.RATE_LIMIT_MS) {
-                return { allowed: false };
-            }
-
+            if (now - AppState.lastRequestTime < AppState.RATE_LIMIT_MS) return { allowed: false };
             AppState.lastRequestTime = now;
             return { allowed: true };
         }
     }
 
-    // Job Matching Functionality
     class JobMatchingManager {
-        static initialize() {
-            this.setupFormSubmission();
-        }
-
+        static initialize() { this.setupFormSubmission(); }
         static setupFormSubmission() {
             const form = document.getElementById('job-matching-form');
             const analyzeBtn = document.getElementById('analyze-job-btn');
             const resultsDiv = document.getElementById('job-analysis-results');
-
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
-
-                // Validate text input
                 const text = document.getElementById('job-text').value.trim();
                 if (text.length < 50) {
-                    this.showError('Please provide at least 50 characters of job description text.');
+                    this.showError('请至少提供 50 字的职位描述。');
                     return;
                 }
-
-                // Set loading state
                 analyzeBtn.disabled = true;
-                analyzeBtn.textContent = 'Analyzing...';
-                resultsDiv.innerHTML = '<div class="text-center py-4">Analyzing job match... This may take up to 30 seconds.</div>';
+                analyzeBtn.textContent = '分析中…';
+                resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-500">正在分析匹配度，大约需要十几秒。</div>';
                 resultsDiv.classList.remove('hidden');
-
                 try {
                     const data = await APIClient.analyzeJobMatch(text);
                     this.displayResults(data);
-
                 } catch (error) {
                     console.error('Job matching error:', error);
-                    this.showError(error.message || 'Analysis failed. Please try again.');
+                    this.showError(error.message || '分析失败，请重试。');
                 } finally {
                     analyzeBtn.disabled = false;
-                    analyzeBtn.textContent = 'Analyze Job Match';
+                    analyzeBtn.textContent = '开始匹配';
                 }
             });
         }
-
         static displayResults(data) {
             const resultsDiv = document.getElementById('job-analysis-results');
-
-            const analysis = data.analysis || 'No analysis available';
-
+            const analysis = data.analysis || '暂无分析结果';
             resultsDiv.innerHTML = `
-                <div class="max-w-none">
-                    <!-- Header -->
-                    <div class="bg-blue-600 text-white rounded-lg p-6 mb-6">
-                        <h3 class="text-2xl font-bold">Job Match Analysis</h3>
-                    </div>
-
-                    <!-- Analysis Content -->
-                    <div class="space-y-4">
-                        ${this.formatAnalysisText(analysis)}
-                    </div>
+                <div class="bg-slate-800 text-white rounded-lg p-4 mb-4">
+                    <h3 class="text-lg font-bold">岗位匹配评估</h3>
                 </div>
+                <div class="space-y-3">${this.formatAnalysisText(analysis)}</div>
             `;
-
             resultsDiv.classList.remove('hidden');
         }
-
         static formatAnalysisText(text) {
-            if (!text) return '<p class="text-gray-500">No analysis available</p>';
-
+            if (!text) return '<p class="text-slate-500">暂无分析</p>';
             return text
-                // Remove the standard ending line
-                .replace(/---\s*This analysis highlights.*?providing a clear and actionable hiring recommendation\./gi, '')
-
-                // Main headers
-                .replace(/^## (.+)$/gm, '<h3 class="text-lg font-bold text-gray-800 mt-6 mb-3 border-b border-gray-200 pb-2">$1</h3>')
-
-                // Sub headers
-                .replace(/^### (.+)$/gm, '<h4 class="text-base font-semibold text-gray-700 mt-4 mb-2">$1</h4>')
-
-                // Bold standalone lines
-                .replace(/^\*\*(.+)\*\*$/gm, '<div class="font-semibold text-blue-700 my-2">$1</div>')
-
-                // List items
-                .replace(/^- (.+)$/gm, '<li class="text-gray-700 mb-1">$1</li>')
-
-                // Wrap consecutive list items
-                .replace(/(<li[^>]*>.*?<\/li>\s*)+/gs, '<ul class="list-disc ml-6 mb-4 space-y-1">$&</ul>')
-
-                // Inline bold
+                .replace(/^## (.+)$/gm, '<h3 class="text-base font-bold text-slate-800 mt-4 mb-2 border-b border-stone-200 pb-1">$1</h3>')
+                .replace(/^### (.+)$/gm, '<h4 class="text-sm font-semibold text-slate-700 mt-3 mb-1">$1</h4>')
+                .replace(/^\*\*(.+)\*\*$/gm, '<div class="font-semibold text-amber-800 my-2">$1</div>')
+                .replace(/^- (.+)$/gm, '<li class="text-slate-700 mb-1">$1</li>')
+                .replace(/(<li[^>]*>.*?<\/li>\s*)+/gs, '<ul class="list-disc ml-6 mb-3 space-y-1">$&</ul>')
                 .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-
-                // Paragraphs
-                .replace(/\n\n/g, '</p><p class="text-gray-700 mb-3 leading-relaxed">')
-                .replace(/^(.+)$/gm, '<p class="text-gray-700 mb-3 leading-relaxed">$1</p>')
-
-                // Clean up empty paragraphs
-                .replace(/<p class="text-gray-700 mb-3 leading-relaxed"><\/p>/g, '')
-                .replace(/<p class="text-gray-700 mb-3 leading-relaxed">\s*<\/p>/g, '')
-
-                // Trim any trailing whitespace
+                .replace(/\n\n/g, '</p><p class="text-slate-700 mb-2 leading-relaxed">')
+                .replace(/^(.+)$/gm, '<p class="text-slate-700 mb-2 leading-relaxed">$1</p>')
+                .replace(/<p class="text-slate-700 mb-2 leading-relaxed"><\/p>/g, '')
                 .trim();
         }
-
         static showError(message) {
             const resultsDiv = document.getElementById('job-analysis-results');
-            resultsDiv.innerHTML = `
-                <div class="bg-red-50 border border-red-200 rounded-lg p-6">
-                    <div class="flex items-center mb-3">
-                        <svg class="w-6 h-6 text-red-600 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                        </svg>
-                        <h3 class="text-lg font-bold text-red-800">Analysis Error</h3>
-                    </div>
-                    <p class="text-red-700">${message}</p>
-                </div>
-            `;
+            resultsDiv.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">${message}</div>`;
             resultsDiv.classList.remove('hidden');
         }
     }
 
-    // Initialize application and add event handlers
     document.addEventListener('DOMContentLoaded', () => {
         AuthManager.checkStatus();
         JobMatchingManager.initialize();
 
-        // Event Handlers
+        document.querySelectorAll('.suggest-q').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                Elements.chatQuery.value = btn.getAttribute('data-q') || '';
+                Elements.chatForm.requestSubmit();
+            });
+        });
+
         Elements.loginForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const inviteCode = document.getElementById('invite-code').value.trim();
-
             const result = await AuthManager.login(inviteCode);
-            if (!result.success) {
-                UIManager.showError(result.error);
-            }
+            if (!result.success) UIManager.showError(result.error);
         });
 
-        Elements.logoutBtn.addEventListener('click', () => {
-            AuthManager.logout();
-        });
+        Elements.logoutBtn.addEventListener('click', () => AuthManager.logout());
 
         Elements.chatForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-
             const query = Elements.chatQuery.value.trim();
             const validation = InputValidator.validateQuery(query);
-
             if (!validation.valid) {
                 UIManager.addMessage('assistant', validation.error);
                 return;
             }
-
-            const rateLimitCheck = InputValidator.checkRateLimit();
-            if (!rateLimitCheck.allowed) {
+            if (!InputValidator.checkRateLimit().allowed) {
                 UIManager.showRateLimit();
                 return;
             }
-
             UIManager.setSubmitState(true);
             UIManager.addMessage('user', query);
             Elements.chatQuery.value = '';
-
             const loadingIndicator = document.createElement('div');
-            loadingIndicator.className = 'text-gray-500 italic p-3';
-            loadingIndicator.textContent = 'Processing query...';
+            loadingIndicator.className = 'text-slate-400 italic p-3 text-sm';
+            loadingIndicator.textContent = '正在检索简历并生成回答…';
             Elements.responseDiv.appendChild(loadingIndicator);
-
             try {
                 const data = await APIClient.submitQuery(query);
                 loadingIndicator.remove();
-
-                const answer = data.answer?.answer || data.answer || 'No response available';
+                const answer = data.answer?.answer || data.answer || data.message || '暂无回答';
                 UIManager.addMessage('assistant', answer);
             } catch (error) {
                 loadingIndicator.remove();
                 console.error('Query error:', error);
-
-                let errorMessage = 'An error occurred. Please try again.';
-                if (error.message === 'Authentication required') {
-                    errorMessage = 'Please log in to continue.';
-                } else if (error.message.includes('HTTP 429')) {
-                    errorMessage = 'Rate limit exceeded. Please wait a moment.';
-                }
-
+                let errorMessage = error.message || '出错了，请重试。';
+                if (error.message === '需要登录') errorMessage = '请先登录。';
                 UIManager.addMessage('assistant', errorMessage);
             } finally {
                 UIManager.setSubmitState(false);
@@ -661,21 +481,14 @@
         });
 
         Elements.summaryBtn.addEventListener('click', async () => {
-            Elements.summaryDiv.innerHTML = 'Generating summary...';
-
+            Elements.summaryDiv.innerHTML = '正在生成摘要…';
             try {
                 const data = await APIClient.generateSummary();
-                const summary = data.summary_md || 'Summary not available';
-                Elements.summaryDiv.innerHTML = `<strong>Professional Summary:</strong><br>${summary.replace(/\n/g, '<br>')}`;
+                const summary = data.summary_md || data.message || '暂无摘要';
+                Elements.summaryDiv.innerHTML = `<strong>专业摘要</strong><br>${String(summary).replace(/\n/g, '<br>')}`;
             } catch (error) {
                 console.error('Summary error:', error);
-
-                let errorMessage = 'Could not generate summary.';
-                if (error.message === 'Authentication required') {
-                    errorMessage = 'Please log in to continue.';
-                }
-
-                Elements.summaryDiv.innerHTML = errorMessage;
+                Elements.summaryDiv.innerHTML = error.message || '无法生成摘要。';
             }
         });
 
@@ -687,3 +500,5 @@
         });
     });
 </script>
+</body>
+</html>

@@ -1,25 +1,38 @@
-from fastapi import APIRouter, Body, Query, Depends, HTTPException, Request, Response
-from app.modules.rag_pipeline import get_chat_completion
-from app.modules.summary_pipeline import get_auto_summary
-from app.modules.job_matching import (
-    process_job_description,
-    analyze_job_match,
-)
+import time
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from app.auth.auth import (
     authenticate_with_code,
-    require_auth,
-    get_user_info,
-    logout_user,
     get_current_user,
+    get_user_info,
     is_auth_enabled,
+    logout_user,
+    require_auth,
 )
-from app.utils.analytics import log_login_event, AdvancedAnalytics
+from app.modules.job_matching import (
+    analyze_job_match,
+    process_job_description,
+)
+from app.modules.rag_pipeline import get_chat_completion
+from app.modules.readiness import (
+    LLMNotConfigured,
+    VectorStoreNotReady,
+    chinese_not_ready_error,
+    is_llm_configured,
+    is_vectorstore_ready,
+)
+from app.modules.summary_pipeline import get_auto_summary
+from app.utils.analytics import AdvancedAnalytics, log_login_event
 from app.utils.logging_config import api_logger
-import time
 
 router = APIRouter()
 advanced_analytics = AdvancedAnalytics()
+
+
+def _not_ready_response() -> JSONResponse:
+    return JSONResponse(status_code=503, content=chinese_not_ready_error())
 
 
 @router.post("/auth/login")
@@ -45,15 +58,12 @@ async def login(
         f"Successful login for company: {user_info.get('company', 'Unknown')}, invite code: {invite_code}"
     )
 
-    # Start chat session in LangSmith
     advanced_analytics.start_chat_session(
         session_token, invite_code, user_info.get("company", "Unknown")
     )
 
-    # Set secure cookie using config settings
     from app.config import config
 
-    # For local development (localhost/127.0.0.1), force secure_cookies to False
     host = request.headers.get("host", "").lower()
     is_local = "localhost" in host or "127.0.0.1" in host
     secure_cookies = config.security.secure_cookies and not is_local
@@ -80,14 +90,9 @@ async def login(
 
 @router.post("/auth/logout")
 async def logout(request: Request, response: Response):
-    """
-    Log out the current user by deleting the session cookie.
-
-    Ends the chat session in LangSmith and logs the logout event.
-    """
+    """Log out the current user by deleting the session cookie."""
     session_token = request.cookies.get("session_token")
     if session_token:
-        # End chat session in LangSmith
         advanced_analytics.end_chat_session(session_token)
         logout_user(session_token)
         api_logger.info(f"User logged out with session token: {session_token}")
@@ -104,13 +109,12 @@ async def auth_status(request: Request):
     Check the authentication status of the current user.
     Returns user information if authenticated, or anonymous status if auth is disabled.
     """
-    # If authentication is disabled, return anonymous status
     if not is_auth_enabled():
         api_logger.debug("Auth status: authentication disabled")
         return {
             "authenticated": False,
             "auth_enabled": False,
-            "user": {"company": "Anonymous User", "code": "anonymous"},
+            "user": {"company": "公开访问", "code": "anonymous"},
         }
 
     user_code = get_current_user(request)
@@ -134,11 +138,12 @@ async def chat(
     query: str = Body(..., embed=True),
     user_code: str = Depends(require_auth),
 ):
-    """
-    Handle chat queries from authenticated users.
+    """Handle chat queries. Returns Chinese JSON when the LLM or vectorstore is not ready."""
+    if not is_llm_configured() or (
+        not is_vectorstore_ready() and not is_llm_configured()
+    ):
+        return _not_ready_response()
 
-    Processes the query, logs interaction details, and returns the chat completion result.
-    """
     user_info = get_user_info(user_code)
     company = user_info.get("company", "Unknown")
     session_token = request.cookies.get("session_token")
@@ -147,21 +152,19 @@ async def chat(
         f"Received chat query from {company} (user_code: {user_code}), query length: {len(query)}"
     )
 
-    # Prepare user metadata for LangSmith
     user_metadata = {"user_code": user_code, "company": company}
-
-    # Measure response time
     start_time = time.time()
 
-    # Call with langsmith_extra parameter
-    result = get_chat_completion(
-        query,
-        user_metadata=user_metadata,
-    )
+    try:
+        result = get_chat_completion(
+            query,
+            user_metadata=user_metadata,
+        )
+    except (LLMNotConfigured, VectorStoreNotReady):
+        return _not_ready_response()
 
     response_time = time.time() - start_time
 
-    # Extract response text and sources for logging
     response_text = ""
     sources = result.get("sources", [])
     if result.get("answer") and result["answer"].get("answer"):
@@ -169,7 +172,8 @@ async def chat(
     elif result.get("answer"):
         response_text = str(result["answer"])
 
-    # Advanced logging with session context
+    from app.config import config
+
     advanced_analytics.log_chat_interaction_advanced(
         user_code=user_code,
         company=company,
@@ -178,7 +182,7 @@ async def chat(
         response_time=response_time,
         sources=sources,
         session_token=session_token or "",
-        metadata={"llm_model": "gpt-4o-mini", "pipeline": "RAG"},
+        metadata={"llm_model": config.llm.model, "pipeline": "RAG"},
     )
 
     api_logger.info(f"Chat response generated for {company} in {response_time:.2f}s")
@@ -191,11 +195,10 @@ async def summary(
     style: str = Query("bullet"),
     user_code: str = Depends(require_auth),
 ):
-    """
-    Generate a summary in the specified style for authenticated users.
+    """Generate a summary. Returns Chinese JSON when the API is not configured."""
+    if not is_llm_configured():
+        return _not_ready_response()
 
-    Logs summary generation details and returns the summary result.
-    """
     user_info = get_user_info(user_code)
     company = user_info.get("company", "Unknown")
 
@@ -203,20 +206,23 @@ async def summary(
         f"Summary request received from {company} (user_code: {user_code}), style: {style}"
     )
 
-    # Prepare user metadata for LangSmith
     user_metadata = {"user_code": user_code, "company": company}
 
-    result = get_auto_summary(style, user_metadata=user_metadata)
+    try:
+        result = get_auto_summary(style, user_metadata=user_metadata)
+    except (LLMNotConfigured, VectorStoreNotReady):
+        return _not_ready_response()
 
     summary_text = result.get("summary_md", "")
 
-    # Advanced logging
+    from app.config import config
+
     advanced_analytics.log_summary_request_advanced(
         user_code=user_code,
         company=company,
         style=style,
         summary_text=summary_text,
-        metadata={"llm_model": "gpt-4o-mini", "pipeline": "Summarization"},
+        metadata={"llm_model": config.llm.model, "pipeline": "Summarization"},
     )
 
     api_logger.info(
@@ -227,12 +233,10 @@ async def summary(
 
 @router.post("/job-match")
 async def job_match_endpoint(request: Request, user_code: str = Depends(require_auth)):
-    """
-    Perform job description matching analysis for authenticated users.
+    """Job matching analysis. Returns Chinese JSON when the API is not configured."""
+    if not is_llm_configured():
+        return _not_ready_response()
 
-    Accepts JSON with text input, processes the job description,
-    performs analysis, and returns the matching results.
-    """
     user_info = get_user_info(user_code)
     company = user_info.get("company", "Unknown")
     session_token = request.cookies.get("session_token")
@@ -242,25 +246,16 @@ async def job_match_endpoint(request: Request, user_code: str = Depends(require_
     )
 
     try:
-        # Parse JSON data for text input only
         body = await request.json()
         text_input = body.get("text")
-
-        # Process job description from text only
         job_description = process_job_description(text=str(text_input))
-
-        # Prepare user metadata for LangSmith
         user_metadata = {"user_code": user_code, "company": company}
-
-        # Measure response time
         start_time = time.time()
-
-        # Perform job matching analysis
         analysis_result = analyze_job_match(job_description, user_metadata)
-
         response_time = time.time() - start_time
 
-        # Advanced logging
+        from app.config import config
+
         advanced_analytics.log_job_matching_advanced(
             user_code=user_code,
             company=company,
@@ -268,7 +263,7 @@ async def job_match_endpoint(request: Request, user_code: str = Depends(require_
             analysis_text=analysis_result["analysis"],
             response_time=response_time,
             session_token=session_token or "",
-            metadata={"llm_model": "gpt-4o-mini", "pipeline": "JobMatching"},
+            metadata={"llm_model": config.llm.model, "pipeline": "JobMatching"},
         )
 
         api_logger.info(
@@ -282,9 +277,11 @@ async def job_match_endpoint(request: Request, user_code: str = Depends(require_
             "relevant_sections": analysis_result.get("relevant_sections", []),
         }
 
+    except (LLMNotConfigured, VectorStoreNotReady):
+        return _not_ready_response()
     except ValueError as e:
-        api_logger.error(f"Job matching validation error for {company}: {str(e)}")
+        api_logger.error(f"Job matching validation error for {company}: {e!s}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        api_logger.error(f"Job matching processing error for {company}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Job matching analysis failed")
+        api_logger.error(f"Job matching processing error for {company}: {e!s}")
+        raise HTTPException(status_code=500, detail="岗位匹配分析失败，请稍后重试")

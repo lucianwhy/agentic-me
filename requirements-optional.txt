@@ -1,0 +1,12 @@
+# 可选重依赖，默认不安装，也不应阻塞启动。
+# pip install -r requirements-optional.txt
+
+# 本地模型
+langchain-ollama
+
+# 追踪与实验（需要相应 API Key / 服务）
+langsmith>=0.1.0
+mlflow>=2.8.0
+
+# 内容安全（需要 GUARDRAILS_TOKEN，且需额外 hub install）
+guardrails-ai

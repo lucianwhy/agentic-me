@@ -42,3 +42,9 @@ logs
 # OS
 .DS_Store
 Thumbs.db
+
+# Virtualenv
+.venv/
+venv/
+
+mlruns/

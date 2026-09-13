@@ -44,15 +44,17 @@ ChatCV lets you stand out by turning your resume into a conversation. Instead of
 
 ---
 
+**中文说明（推荐）：** 见 [README.zh.md](./README.zh.md)。默认用 venv + uvicorn 运行，不需要 Docker。
+
 ## Getting Started
 
 **What you need:**
-- Docker & Docker Compose
-- OpenAI API key (local Ollama support coming soon)
+- Python 3.11+
+- An OpenAI-compatible API key when you want chat (DeepSeek etc. via `OPENAI_BASE_URL`). The homepage and `/health` start without a key.
 
 ### 1. Get the Code
 ```bash
-git clone https://github.com/FinnBehrendt/ChatCV.git
+git clone https://github.com/lucianwhy/ChatCV.git
 cd ChatCV
 cp .env.example .env
 ```
@@ -60,8 +62,11 @@ cp .env.example .env
 ### 2. Add Your Secrets
 Edit the `.env` file:
 ```bash
-# Required
+# Required later for chat (homepage works without it)
 OPENAI_API_KEY="your_openai_api_key_here"
+# Optional OpenAI-compatible gateway (DeepSeek, etc.)
+# OPENAI_BASE_URL="https://api.deepseek.com"
+# LLM_MODEL=deepseek-chat
 
 # Optional extras (leave empty if you don't need them)
 LANGSMITH_API_KEY="your_langsmith_key"     # For advanced analytics
@@ -78,21 +83,15 @@ GUARDRAILS_TOKEN="your_guardrails_token"   # Extra safety (slower build)
 - Edit `config/base.yml` if you want to change file paths or naming
 - replace `/static/default-avatar.png` with your profile picture
 
-### 4. Start the App
+### 4. Start the App (no Docker)
+```bash
+./scripts/run.sh
+```
+This creates `.venv`, installs `requirements.txt`, and runs `uvicorn main:app --reload`.
+
+Docker remains optional:
 ```bash
 docker compose up --build
-```
-Alternatively, without Docker:
-```bash
-# install requirements
-pip install -r requirements.txt
-# optionally, install guardrails - you can skip these steps!
-guardrails configure # interactive! You will need a token!
-guardrails hub install hub://guardrails/toxic_language
-guardrails hub install hub://guardrails/reading_time
-guardrails hub install hub://guardrails/profanity_free
-# run the app
-uvicorn main:app
 ```
 ### 5. Try It Out
 Head to `http://localhost:8000` and start chatting with your resume!
