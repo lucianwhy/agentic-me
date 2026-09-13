@@ -91,6 +91,7 @@ class CandidateConfig(BaseModel):
     name: str = "你的姓名"
     headline: str = "求职方向 / 一句话介绍"
     email: str = "your.email@example.com"
+    phone: str = ""
     linkedin: str = "https://linkedin.com/in/your-profile"
     github: str = "https://github.com/your-username"
     scholar: str = ""

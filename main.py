@@ -74,6 +74,7 @@ async def index(request: Request) -> HTMLResponse:
             "candidate_name": config.candidate.name,
             "candidate_headline": getattr(config.candidate, "headline", ""),
             "candidate_email": config.candidate.email,
+            "candidate_phone": getattr(config.candidate, "phone", "") or "",
             "candidate_linkedin": config.candidate.linkedin,
             "candidate_github": config.candidate.github,
             "candidate_scholar": getattr(config.candidate, "scholar", "") or "",

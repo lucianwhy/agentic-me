@@ -31,6 +31,46 @@ router = APIRouter()
 advanced_analytics = AdvancedAnalytics()
 
 
+def _extract_answer_text(result: dict) -> str:
+    """Normalize LangChain / pipeline answer into a plain string."""
+    answer = result.get("answer")
+    if isinstance(answer, dict):
+        inner = answer.get("answer")
+        if isinstance(inner, str):
+            return inner
+        if inner is not None:
+            return str(inner)
+        # Full chain result nested under "answer"
+        for key in ("output", "text", "content", "result"):
+            if isinstance(answer.get(key), str):
+                return answer[key]
+        return ""
+    if isinstance(answer, str):
+        return answer
+    if answer is None:
+        return ""
+    return str(answer)
+
+
+def _serialize_sources(sources) -> list:
+    """Make retrieval sources JSON-safe."""
+    out: list = []
+    for item in sources or []:
+        if hasattr(item, "page_content"):
+            out.append(
+                {
+                    "content": (getattr(item, "page_content", None) or "")[:300],
+                    "metadata": dict(getattr(item, "metadata", None) or {}),
+                }
+            )
+        elif isinstance(item, dict):
+            out.append(item)
+        else:
+            out.append({"content": str(item)})
+    return out
+
+
+
 def _not_ready_response() -> JSONResponse:
     return JSONResponse(status_code=503, content=chinese_not_ready_error())
 
@@ -165,12 +205,8 @@ async def chat(
 
     response_time = time.time() - start_time
 
-    response_text = ""
-    sources = result.get("sources", [])
-    if result.get("answer") and result["answer"].get("answer"):
-        response_text = result["answer"]["answer"]
-    elif result.get("answer"):
-        response_text = str(result["answer"])
+    response_text = _extract_answer_text(result)
+    sources = _serialize_sources(result.get("sources", []))
 
     from app.config import config
 
@@ -186,7 +222,7 @@ async def chat(
     )
 
     api_logger.info(f"Chat response generated for {company} in {response_time:.2f}s")
-    return result
+    return {"answer": response_text, "sources": sources}
 
 
 @router.post("/summary")
