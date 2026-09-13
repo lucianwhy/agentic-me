@@ -122,6 +122,8 @@ class AppConfig(BaseSettings):
     reasoning_effort_env: str | None = Field(default=None, alias="REASONING_EFFORT")
     embedding_provider_env: str | None = Field(default=None, alias="EMBEDDING_PROVIDER")
     embedding_base_url: str | None = Field(default=None, alias="EMBEDDING_BASE_URL")
+    ark_api_key: str | None = Field(default=None, alias="ARK_API_KEY")
+    embedding_api_key: str | None = Field(default=None, alias="EMBEDDING_API_KEY")
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
 
     llm: LLMConfig = LLMConfig()
@@ -215,6 +217,18 @@ class AppConfig(BaseSettings):
         if embedding_provider:
             self.embedding.provider = embedding_provider
 
+        ark_key = (
+            (self.ark_api_key or "").strip()
+            or (os.getenv("ARK_API_KEY") or "").strip()
+        )
+        self.ark_api_key = ark_key or None
+
+        emb_key = (
+            (self.embedding_api_key or "").strip()
+            or (os.getenv("EMBEDDING_API_KEY") or "").strip()
+        )
+        self.embedding_api_key = emb_key or None
+
         ollama_endpoint = (os.getenv("OLLAMA_ENDPOINT") or "").strip()
         if ollama_endpoint:
             self.ollama.endpoint = ollama_endpoint
@@ -238,6 +252,16 @@ class AppConfig(BaseSettings):
     def resolved_api_key(self) -> str | None:
         """Return a non-empty API key if configured."""
         key = (self.openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip()
+        return key or None
+
+    def resolved_embedding_api_key(self) -> str | None:
+        """Return Ark / embedding-specific API key (independent of chat LLM)."""
+        key = (
+            (self.ark_api_key or "").strip()
+            or (self.embedding_api_key or "").strip()
+            or (os.getenv("ARK_API_KEY") or "").strip()
+            or (os.getenv("EMBEDDING_API_KEY") or "").strip()
+        )
         return key or None
 
     def resolved_base_url(self) -> str | None:

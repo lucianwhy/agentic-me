@@ -13,8 +13,10 @@ ollama:
   timeout: 120
 
 embedding:
+  # fastembed | openai | ollama | ark (volcengine/doubao multimodal)
   provider: "fastembed"
   model: "BAAI/bge-small-zh-v1.5"
+  # Ark 示例：provider=ark, model=<endpoint id ep-...>, base_url=https://ark.cn-beijing.volces.com/api/v3
   chunk_size: 1000
   chunk_overlap: 200
   base_url: null

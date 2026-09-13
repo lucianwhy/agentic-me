@@ -14,7 +14,8 @@ class ModelProvider:
 
     Supports OpenAI and any OpenAI-compatible endpoint (DeepSeek, etc.) via
     OPENAI_API_KEY + OPENAI_BASE_URL / LLM_BASE_URL. Ollama is an optional
-    extra and is imported only when selected.
+    extra and is imported only when selected. Ark / Volcengine multimodal
+    embeddings use ARK_API_KEY (or EMBEDDING_API_KEY) independently of chat.
     """
 
     def __init__(self, config: AppConfig, logger: logging.Logger):
@@ -111,6 +112,26 @@ class ModelProvider:
                     "请执行：pip install fastembed"
                 ) from exc
             return FastEmbedEmbeddings(model_name=model_name)
+
+        if provider in ("ark", "volcengine", "doubao"):
+            self.logger.info(
+                "Using Volcengine Ark multimodal embedding provider "
+                f"(model={model_name}, base={self.config.embedding.base_url or 'default'})."
+            )
+            api_key = self.config.resolved_embedding_api_key()
+            if not api_key:
+                raise LLMNotConfigured(
+                    "已选择 Ark Embedding，但未配置 ARK_API_KEY 或 EMBEDDING_API_KEY。"
+                )
+            from app.modules.ark_embeddings import ArkMultimodalEmbeddings
+
+            return ArkMultimodalEmbeddings(
+                api_key=api_key,
+                model=model_name,
+                base_url=self.config.embedding.base_url
+                or "https://ark.cn-beijing.volces.com/api/v3",
+                timeout=float(getattr(self.config.llm, "timeout", 60) or 60),
+            )
 
         if not self.config.resolved_api_key() and not os.getenv("OPENAI_API_KEY"):
             raise LLMNotConfigured(
