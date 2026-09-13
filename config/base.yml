@@ -25,7 +25,7 @@ vectorstore:
   provider: "chroma"
   persist_directory: "data/vector_db"
   collection_name: "chatcv"
-  retrieval_k: 8
+  retrieval_k: 4
 
 rate_limit:
   enabled: true
