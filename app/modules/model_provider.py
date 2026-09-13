@@ -69,12 +69,18 @@ class ModelProvider:
                 else ""
             )
         )
-        return ChatOpenAI(
-            model=self.config.llm.model,
-            temperature=self.config.llm.temperature,
-            timeout=self.config.llm.timeout,
+        llm_kwargs = {
+            "model": self.config.llm.model,
+            "temperature": self.config.llm.temperature,
+            "timeout": self.config.llm.timeout,
             **self._openai_kwargs(for_embedding=False),
-        )
+        }
+        effort = (getattr(self.config.llm, "reasoning_effort", None) or "").strip()
+        if effort:
+            # OpenAI / nuoapi Chat Completions: reasoning_effort
+            llm_kwargs["reasoning_effort"] = effort
+            self.logger.info(f"Using reasoning_effort={effort}")
+        return ChatOpenAI(**llm_kwargs)
 
     def get_embedding_model(self) -> Any:
         """Return the configured embedding model. Does not call the network."""

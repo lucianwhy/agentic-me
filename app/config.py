@@ -15,6 +15,7 @@ class LLMConfig(BaseModel):
     model: str = "gpt-4o-mini"
     temperature: float = 0.1
     timeout: int = 60
+    reasoning_effort: str | None = "medium"
     base_url: str | None = None
 
 
@@ -118,6 +119,7 @@ class AppConfig(BaseSettings):
     llm_model_env: str | None = Field(default=None, alias="LLM_MODEL")
     llm_provider_env: str | None = Field(default=None, alias="LLM_PROVIDER")
     embedding_model_env: str | None = Field(default=None, alias="EMBEDDING_MODEL")
+    reasoning_effort_env: str | None = Field(default=None, alias="REASONING_EFFORT")
     embedding_provider_env: str | None = Field(default=None, alias="EMBEDDING_PROVIDER")
     embedding_base_url: str | None = Field(default=None, alias="EMBEDDING_BASE_URL")
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
@@ -194,6 +196,12 @@ class AppConfig(BaseSettings):
         ).strip()
         if llm_provider:
             self.llm.provider = llm_provider
+
+        reasoning_effort = (
+            self.reasoning_effort_env or os.getenv("REASONING_EFFORT") or ""
+        ).strip()
+        if reasoning_effort:
+            self.llm.reasoning_effort = reasoning_effort
 
         embedding_model = (
             self.embedding_model_env or os.getenv("EMBEDDING_MODEL") or ""
