@@ -133,7 +133,14 @@
                           placeholder="例如：TA 有没有带团队或独立负责过完整项目？"
                           class="w-full border border-stone-300 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-slate-400"
                           maxlength="1000" required></textarea>
-                <div class="flex flex-wrap gap-2 mt-3">
+                <div class="flex flex-wrap items-center gap-2 mt-3">
+                    <label for="model-select" class="text-sm text-slate-600 whitespace-nowrap">模型</label>
+                    <select id="model-select"
+                            class="border border-stone-300 rounded-lg py-2 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            aria-label="选择对话模型">
+                        <option value="gpt-5.6-sol" selected>Sol（质量）</option>
+                        <option value="gpt-5.6-luna">Luna（更快）</option>
+                    </select>
                     <button type="submit" id="submit-btn"
                             class="bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2 px-5 rounded-lg disabled:opacity-50">
                         发送
@@ -192,12 +199,17 @@
     const CANDIDATE_NAME = {{ candidate_name | tojson }};
     const WELCOME_HTML = `<div class="welcome-msg text-slate-500 text-sm">你好，我是 ${CANDIDATE_NAME} 的简历助手。点上面的问题，或直接输入你的问题。</div>`;
 
+    const MODEL_STORAGE_KEY = 'chatcv_model';
+    const DEFAULT_MODEL = 'gpt-5.6-sol';
+    const ALLOWED_MODELS = ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra'];
+
     const AppState = {
         isAuthenticated: false,
         userInfo: null,
         lastRequestTime: 0,
         RATE_LIMIT_MS: 3000,
-        authEnabled: false
+        authEnabled: false,
+        selectedModel: DEFAULT_MODEL
     };
 
     const Elements = {
@@ -214,8 +226,38 @@
         responseDiv: document.getElementById('response'),
         summaryBtn: document.getElementById('summary-button'),
         summaryDiv: document.getElementById('summary-response'),
-        rateLimitWarning: document.getElementById('rate-limit-warning')
+        rateLimitWarning: document.getElementById('rate-limit-warning'),
+        modelSelect: document.getElementById('model-select')
     };
+
+    function getSelectedModel() {
+        const fromSelect = Elements.modelSelect ? Elements.modelSelect.value : '';
+        const candidate = fromSelect || AppState.selectedModel || DEFAULT_MODEL;
+        return ALLOWED_MODELS.includes(candidate) ? candidate : DEFAULT_MODEL;
+    }
+
+    function persistModelChoice(model) {
+        const value = ALLOWED_MODELS.includes(model) ? model : DEFAULT_MODEL;
+        AppState.selectedModel = value;
+        try { localStorage.setItem(MODEL_STORAGE_KEY, value); } catch (_) {}
+        if (Elements.modelSelect) Elements.modelSelect.value = value;
+    }
+
+    function loadModelChoice() {
+        let stored = null;
+        try { stored = localStorage.getItem(MODEL_STORAGE_KEY); } catch (_) {}
+        const value = ALLOWED_MODELS.includes(stored) ? stored : DEFAULT_MODEL;
+        persistModelChoice(value);
+        // Prefer server default when available (env may favor Sol if Luna is down)
+        fetch('/models').then(r => r.ok ? r.json() : null).then(data => {
+            if (!data) return;
+            if (stored && ALLOWED_MODELS.includes(stored)) return; // user already chose
+            const serverDefault = data.default;
+            if (serverDefault && ALLOWED_MODELS.includes(serverDefault)) {
+                persistModelChoice(serverDefault);
+            }
+        }).catch(() => {});
+    }
 
     function extractErrorMessage(data, fallback) {
         if (!data) return fallback;
@@ -430,7 +472,7 @@
             const response = await this.makeAuthenticatedRequest('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query })
+                body: JSON.stringify({ query, model: getSelectedModel() })
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -450,7 +492,7 @@
                     'Content-Type': 'application/json',
                     'Accept': 'text/event-stream'
                 },
-                body: JSON.stringify({ query })
+                body: JSON.stringify({ query, model: getSelectedModel() })
             });
 
             if (!response.ok) {
@@ -617,6 +659,12 @@
     document.addEventListener('DOMContentLoaded', () => {
         AuthManager.checkStatus();
         JobMatchingManager.initialize();
+        loadModelChoice();
+        if (Elements.modelSelect) {
+            Elements.modelSelect.addEventListener('change', () => {
+                persistModelChoice(Elements.modelSelect.value);
+            });
+        }
 
         document.querySelectorAll('.suggest-q').forEach((btn) => {
             btn.addEventListener('click', () => {

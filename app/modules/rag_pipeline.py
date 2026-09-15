@@ -47,6 +47,27 @@ except ImportError:
 
 load_dotenv()
 
+# Whitelist for per-request model override (Sol / Luna / Terra).
+ALLOWED_CHAT_MODELS = (
+    "gpt-5.6-sol",
+    "gpt-5.6-luna",
+    "gpt-5.6-terra",
+)
+
+
+def normalize_chat_model(model: str | None) -> str | None:
+    """Return a whitelisted model id, or None to use the env default."""
+    if model is None:
+        return None
+    name = str(model).strip()
+    if not name:
+        return None
+    if name not in ALLOWED_CHAT_MODELS:
+        raise ValueError(
+            f"不支持的模型：{name}。可选：{', '.join(ALLOWED_CHAT_MODELS)}"
+        )
+    return name
+
 
 class ChatRAGPipeline:
     """Main RAG pipeline for ChatCV with thread-safe singleton pattern."""
@@ -74,7 +95,11 @@ class ChatRAGPipeline:
         )
         self.document_manager = DocumentHandler(self.config, rag_logger)
         self.query_validator = QueryValidator(self.config, rag_logger)
-        self.qa_chain = None
+        # Per-model caches so Sol/Luna switcher does not reuse the wrong LLM.
+        self._qa_chains: dict[str, Any] = {}
+        self._history_aware_retrievers: dict[str, Any] = {}
+        self._document_chains: dict[str, Any] = {}
+        self.qa_chain = None  # legacy alias: last-used default chain
         self.history_aware_retriever = None
         self.document_chain = None
         self.chat_history = None
@@ -83,16 +108,27 @@ class ChatRAGPipeline:
         self._initialized = True
         rag_logger.info("ChatRAGPipeline instance setup complete")
 
-    def _initialize_qa_chain(self):
-        """Thread-safe initialization of the QA chain."""
-        if self.qa_chain is not None:
+    def _model_key(self, model: str | None = None) -> str:
+        """Stable cache key for a chat model (env default when unset)."""
+        return (model or "").strip() or self.config.llm.model
+
+    def _initialize_qa_chain(self, model: str | None = None):
+        """Thread-safe initialization of the QA chain for a given model."""
+        key = self._model_key(model)
+        if key in self._qa_chains:
+            self.qa_chain = self._qa_chains[key]
+            self.history_aware_retriever = self._history_aware_retrievers[key]
+            self.document_chain = self._document_chains[key]
             return
 
         with self._chain_lock:
-            if self.qa_chain is not None:
+            if key in self._qa_chains:
+                self.qa_chain = self._qa_chains[key]
+                self.history_aware_retriever = self._history_aware_retrievers[key]
+                self.document_chain = self._document_chains[key]
                 return
 
-            rag_logger.info("Initializing RAG QA chain")
+            rag_logger.info(f"Initializing RAG QA chain for model={key}")
 
             history_instruction = getattr(
                 self.config,
@@ -111,7 +147,7 @@ class ChatRAGPipeline:
             base_retriever = vector_database.as_retriever()
             base_retriever.search_kwargs["k"] = self.config.vectorstore.retrieval_k or 8
 
-            language_model = self.model_provider.get_language_model()
+            language_model = self.model_provider.get_language_model(model=key)
 
             history_aware_retriever = create_history_aware_retriever(
                 llm=language_model, retriever=base_retriever, prompt=retriever_prompt
@@ -151,16 +187,23 @@ class ChatRAGPipeline:
                 }
             )
 
+            qa_chain = input_validator | base_qa_chain | output_validator
+            self._history_aware_retrievers[key] = history_aware_retriever
+            self._document_chains[key] = document_chain
+            self._qa_chains[key] = qa_chain
             self.history_aware_retriever = history_aware_retriever
             self.document_chain = document_chain
-            self.qa_chain = input_validator | base_qa_chain | output_validator
-            rag_logger.info("RAG QA chain initialization completed")
+            self.qa_chain = qa_chain
+            rag_logger.info(f"RAG QA chain initialization completed for model={key}")
 
     @langsmith_traceable(
         run_type="llm", name="Chat Completion", tags=["chatcv", "rag"], metadata={}
     )
     def get_completion(
-        self, query: str, user_metadata: dict[str, Any] | None = None
+        self,
+        query: str,
+        user_metadata: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Process chat query and return response with conversation history."""
         rag_logger.info(f"Processing chat query, length: {len(query)}")
@@ -171,7 +214,7 @@ class ChatRAGPipeline:
             # Allow a single auto-ingest attempt when a key is present.
             rag_logger.info("Vectorstore missing; attempting one-time ingest")
 
-        self._initialize_qa_chain()
+        self._initialize_qa_chain(model=model)
 
         current_run = get_current_run_tree()
         if current_run and user_metadata:
@@ -213,7 +256,10 @@ class ChatRAGPipeline:
 
 
     def stream_completion(
-        self, query: str, user_metadata: dict[str, Any] | None = None
+        self,
+        query: str,
+        user_metadata: dict[str, Any] | None = None,
+        model: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """
         Stream final answer tokens over SSE-friendly event dicts.
@@ -234,7 +280,7 @@ class ChatRAGPipeline:
         if not is_vectorstore_ready():
             rag_logger.info("Vectorstore missing; attempting one-time ingest")
 
-        self._initialize_qa_chain()
+        self._initialize_qa_chain(model=model)
 
         current_run = get_current_run_tree()
         if current_run and user_metadata:
@@ -328,19 +374,23 @@ def get_chat_pipeline() -> ChatRAGPipeline:
 
 
 def get_chat_completion(
-    query: str, user_metadata: dict[str, Any] | None = None
+    query: str,
+    user_metadata: dict[str, Any] | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     rag_logger.info("get_chat_completion invoked")
     pipeline = get_chat_pipeline()
-    return pipeline.get_completion(query, user_metadata)
+    return pipeline.get_completion(query, user_metadata, model=model)
 
 
 def get_chat_stream(
-    query: str, user_metadata: dict[str, Any] | None = None
+    query: str,
+    user_metadata: dict[str, Any] | None = None,
+    model: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     rag_logger.info("get_chat_stream invoked")
     pipeline = get_chat_pipeline()
-    return pipeline.stream_completion(query, user_metadata)
+    return pipeline.stream_completion(query, user_metadata, model=model)
 
 
 if __name__ == "__main__":

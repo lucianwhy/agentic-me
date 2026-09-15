@@ -17,7 +17,12 @@ from app.modules.job_matching import (
     analyze_job_match,
     process_job_description,
 )
-from app.modules.rag_pipeline import get_chat_completion, get_chat_stream
+from app.modules.rag_pipeline import (
+    ALLOWED_CHAT_MODELS,
+    get_chat_completion,
+    get_chat_stream,
+    normalize_chat_model,
+)
 from app.modules.readiness import (
     LLMNotConfigured,
     VectorStoreNotReady,
@@ -174,10 +179,35 @@ async def auth_status(request: Request):
     return {"authenticated": False, "auth_enabled": True}
 
 
+def _resolve_request_model(model: str | None) -> str | None:
+    """Validate optional model override; raise HTTP 400 on bad values."""
+    try:
+        return normalize_chat_model(model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/models")
+async def list_models():
+    """Return chat model whitelist and the current env default."""
+    from app.config import config
+
+    return {
+        "models": list(ALLOWED_CHAT_MODELS),
+        "default": config.llm.model,
+        "labels": {
+            "gpt-5.6-sol": "Sol（质量）",
+            "gpt-5.6-luna": "Luna（更快）",
+            "gpt-5.6-terra": "Terra",
+        },
+    }
+
+
 @router.post("/chat")
 async def chat(
     request: Request,
     query: str = Body(..., embed=True),
+    model: str | None = Body(None, embed=True),
     user_code: str = Depends(require_auth),
 ):
     """Handle chat queries. Returns Chinese JSON when the LLM or vectorstore is not ready."""
@@ -186,12 +216,14 @@ async def chat(
     ):
         return _not_ready_response()
 
+    resolved_model = _resolve_request_model(model)
     user_info = get_user_info(user_code)
     company = user_info.get("company", "Unknown")
     session_token = request.cookies.get("session_token")
 
     api_logger.info(
-        f"Received chat query from {company} (user_code: {user_code}), query length: {len(query)}"
+        f"Received chat query from {company} (user_code: {user_code}), "
+        f"query length: {len(query)}, model={resolved_model or 'default'}"
     )
 
     user_metadata = {"user_code": user_code, "company": company}
@@ -201,6 +233,7 @@ async def chat(
         result = get_chat_completion(
             query,
             user_metadata=user_metadata,
+            model=resolved_model,
         )
     except (LLMNotConfigured, VectorStoreNotReady):
         return _not_ready_response()
@@ -212,6 +245,7 @@ async def chat(
 
     from app.config import config
 
+    used_model = resolved_model or config.llm.model
     advanced_analytics.log_chat_interaction_advanced(
         user_code=user_code,
         company=company,
@@ -220,17 +254,18 @@ async def chat(
         response_time=response_time,
         sources=sources,
         session_token=session_token or "",
-        metadata={"llm_model": config.llm.model, "pipeline": "RAG"},
+        metadata={"llm_model": used_model, "pipeline": "RAG"},
     )
 
     api_logger.info(f"Chat response generated for {company} in {response_time:.2f}s")
-    return {"answer": response_text, "sources": sources}
+    return {"answer": response_text, "sources": sources, "model": used_model}
 
 
 @router.post("/chat/stream")
 async def chat_stream(
     request: Request,
     query: str = Body(..., embed=True),
+    model: str | None = Body(None, embed=True),
     user_code: str = Depends(require_auth),
 ):
     """
@@ -249,13 +284,14 @@ async def chat_stream(
     ):
         return _not_ready_response()
 
+    resolved_model = _resolve_request_model(model)
     user_info = get_user_info(user_code)
     company = user_info.get("company", "Unknown")
     session_token = request.cookies.get("session_token")
 
     api_logger.info(
         f"Received streaming chat query from {company} (user_code: {user_code}), "
-        f"query length: {len(query)}"
+        f"query length: {len(query)}, model={resolved_model or 'default'}"
     )
 
     user_metadata = {"user_code": user_code, "company": company}
@@ -267,7 +303,9 @@ async def chat_stream(
     def event_generator() -> Iterator[str]:
         accumulated: list[str] = []
         try:
-            for event in get_chat_stream(query, user_metadata=user_metadata):
+            for event in get_chat_stream(
+                query, user_metadata=user_metadata, model=resolved_model
+            ):
                 etype = event.get("type")
                 if etype == "token":
                     content = event.get("content") or ""
@@ -289,7 +327,7 @@ async def chat_stream(
                             sources=sources,
                             session_token=session_token or "",
                             metadata={
-                                "llm_model": config.llm.model,
+                                "llm_model": resolved_model or config.llm.model,
                                 "pipeline": "RAG-stream",
                             },
                         )

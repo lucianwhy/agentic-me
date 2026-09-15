@@ -38,11 +38,16 @@ class ModelProvider:
             kwargs["base_url"] = base_url
         return kwargs
 
-    def get_language_model(self) -> Any:
-        """Return the configured chat model. Does not call the network."""
+    def get_language_model(self, model: str | None = None) -> Any:
+        """Return the configured chat model. Does not call the network.
+
+        Optional ``model`` overrides ``config.llm.model`` for this instance only
+        (used by the per-request Sol/Luna switcher).
+        """
         provider = str(self.config.llm.provider).lower()
+        model_name = (model or "").strip() or self.config.llm.model
         self.logger.info(
-            f"Starting initialization of language model '{self.config.llm.model}'."
+            f"Starting initialization of language model '{model_name}'."
         )
         if "ollama" in provider:
             self.logger.info("Using optional Ollama language model provider.")
@@ -54,7 +59,7 @@ class ModelProvider:
                     "请执行：pip install langchain-ollama"
                 ) from exc
             return ChatOllama(
-                model=self.config.llm.model,
+                model=model_name,
                 temperature=self.config.llm.temperature,
                 base_url=self.config.ollama.endpoint,
             )
@@ -71,7 +76,7 @@ class ModelProvider:
             )
         )
         llm_kwargs = {
-            "model": self.config.llm.model,
+            "model": model_name,
             "temperature": self.config.llm.temperature,
             "timeout": self.config.llm.timeout,
             **self._openai_kwargs(for_embedding=False),
