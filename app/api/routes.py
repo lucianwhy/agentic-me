@@ -5,6 +5,14 @@ from collections.abc import Iterator
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.admin import (
+    ADMIN_COOKIE_NAME,
+    create_admin_session,
+    public_settings,
+    require_admin,
+    revoke_admin_session,
+    update_settings,
+)
 from app.auth.auth import (
     authenticate_with_code,
     get_current_user,
@@ -177,6 +185,63 @@ async def auth_status(request: Request):
         }
     api_logger.debug("Authentication status checked: user not authenticated")
     return {"authenticated": False, "auth_enabled": True}
+
+
+@router.post("/api/admin/session")
+async def admin_login(
+    request: Request, response: Response, password: str = Body(..., embed=True)
+):
+    """Authenticate the hidden local administration page."""
+    token = create_admin_session(password.strip())
+    if not token:
+        raise HTTPException(status_code=401, detail="管理密码不正确。")
+
+    host = request.headers.get("host", "").lower()
+    is_local = "localhost" in host or "127.0.0.1" in host
+    from app.config import config
+
+    response.set_cookie(
+        key=ADMIN_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=config.security.secure_cookies and not is_local,
+        samesite="lax",
+        max_age=config.security.session_timeout_hours * 60 * 60,
+    )
+    return {"success": True}
+
+
+@router.delete("/api/admin/session")
+async def admin_logout(request: Request, response: Response):
+    revoke_admin_session(request.cookies.get(ADMIN_COOKIE_NAME))
+    response.delete_cookie(ADMIN_COOKIE_NAME)
+    return {"success": True}
+
+
+@router.get("/api/admin/settings")
+async def get_admin_settings(_: None = Depends(require_admin)):
+    """Read editable settings without exposing the configured API key."""
+    return public_settings()
+
+
+@router.post("/api/admin/settings")
+async def save_admin_settings(
+    api_key: str | None = Body(None, embed=True),
+    base_url: str = Body("", embed=True),
+    model: str = Body(..., embed=True),
+    reasoning_effort: str = Body(..., embed=True),
+    _: None = Depends(require_admin),
+):
+    """Persist OpenAI-compatible model settings and apply them immediately."""
+    try:
+        return update_settings(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _resolve_request_model(model: str | None) -> str | None:

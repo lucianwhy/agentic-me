@@ -83,6 +83,12 @@ async def index(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request) -> HTMLResponse:
+    """Serve the unlinked, password-protected runtime settings page."""
+    return render_template(request, "admin.html", {})
+
+
 @app.get("/health")
 async def health_check() -> dict[str, Any]:
     """

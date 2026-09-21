@@ -67,6 +67,12 @@ class SummaryGenerator:
             self.llm = self.model_provider.get_language_model()
         return self.llm
 
+    def reset_model_cache(self) -> None:
+        """Discard a chain that may have been built with old runtime settings."""
+        with self._chain_lock:
+            self.llm = None
+            self.summary_chain = None
+
     def _initialize_summary_chain(self):
         if self.summary_chain is not None:
             summary_logger.info(

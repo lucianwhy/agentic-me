@@ -112,6 +112,16 @@ class ChatRAGPipeline:
         """Stable cache key for a chat model (env default when unset)."""
         return (model or "").strip() or self.config.llm.model
 
+    def reset_model_caches(self) -> None:
+        """Discard LLM chains after a runtime model configuration update."""
+        with self._chain_lock:
+            self._qa_chains.clear()
+            self._history_aware_retrievers.clear()
+            self._document_chains.clear()
+            self.qa_chain = None
+            self.history_aware_retriever = None
+            self.document_chain = None
+
     def _initialize_qa_chain(self, model: str | None = None):
         """Thread-safe initialization of the QA chain for a given model."""
         key = self._model_key(model)

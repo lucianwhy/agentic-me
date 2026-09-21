@@ -119,6 +119,7 @@ class AppConfig(BaseSettings):
     llm_base_url: str | None = Field(default=None, alias="LLM_BASE_URL")
     llm_model_env: str | None = Field(default=None, alias="LLM_MODEL")
     llm_provider_env: str | None = Field(default=None, alias="LLM_PROVIDER")
+    admin_password: str | None = Field(default=None, alias="ADMIN_PASSWORD")
     embedding_model_env: str | None = Field(default=None, alias="EMBEDDING_MODEL")
     reasoning_effort_env: str | None = Field(default=None, alias="REASONING_EFFORT")
     embedding_provider_env: str | None = Field(default=None, alias="EMBEDDING_PROVIDER")
@@ -277,6 +278,11 @@ class AppConfig(BaseSettings):
     def is_openai_compatible(self) -> bool:
         provider = str(self.llm.provider).lower()
         return "ollama" not in provider
+
+    def resolved_admin_password(self) -> str:
+        """Return the local admin password, with a user-requested default."""
+        value = (self.admin_password or os.getenv("ADMIN_PASSWORD") or "admin123").strip()
+        return value or "admin123"
 
     def cv_public_url(self) -> str:
         """URL path for downloading the CV via the /data static mount."""

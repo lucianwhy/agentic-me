@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>agentic-me · 管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-900">
+    <main class="mx-auto max-w-2xl px-4 py-12">
+        <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p class="text-sm font-medium text-slate-500">agentic-me</p>
+            <h1 class="mt-1 text-2xl font-bold">运行配置</h1>
+            <p class="mt-2 text-sm leading-6 text-slate-600">配置保存在服务器的 <code>.env</code>。密钥不会在此页面回显。</p>
+
+            <form id="login-form" class="mt-6 space-y-4">
+                <label class="block">
+                    <span class="text-sm font-medium">管理密码</span>
+                    <input id="password" type="password" autocomplete="current-password" required
+                           class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+                           placeholder="输入管理密码">
+                </label>
+                <button class="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white hover:bg-slate-700" type="submit">进入管理页</button>
+                <p id="login-status" class="text-sm" role="alert"></p>
+            </form>
+
+            <form id="settings-form" class="mt-6 hidden space-y-5">
+                <div class="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                    <div>
+                        <h2 class="font-semibold">对话模型</h2>
+                        <p class="mt-1 text-sm text-slate-500">保存后，新请求会立即使用新的设置。</p>
+                    </div>
+                    <button id="logout" class="text-sm text-slate-600 underline hover:text-slate-900" type="button">退出</button>
+                </div>
+
+                <label class="block">
+                    <span class="text-sm font-medium">OpenAI 兼容 API Key</span>
+                    <input id="api-key" type="password" autocomplete="new-password"
+                           class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+                           placeholder="留空则保留当前 Key">
+                    <span id="key-status" class="mt-1 block text-xs text-slate-500"></span>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium">API 地址（可选）</span>
+                    <input id="base-url" type="url"
+                           class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+                           placeholder="https://api.openai.com/v1">
+                    <span class="mt-1 block text-xs text-slate-500">DeepSeek、OpenAI 网关等兼容接口填写完整 URL；留空使用服务商默认地址。</span>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium">默认模型</span>
+                    <input id="model" list="known-models" required
+                           class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none">
+                    <datalist id="known-models">
+                        <option value="gpt-5.6-luna"></option>
+                        <option value="gpt-5.6-terra"></option>
+                        <option value="gpt-5.6-sol"></option>
+                        <option value="gpt-4o-mini"></option>
+                        <option value="deepseek-chat"></option>
+                    </datalist>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium">回答分析强度</span>
+                    <select id="reasoning-effort" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-slate-500 focus:outline-none"></select>
+                    <span class="mt-1 block text-xs text-slate-500">强度越高，复杂问题通常更细致，但响应会更慢、成本也可能更高。</span>
+                </label>
+
+                <div class="flex items-center gap-3">
+                    <button id="save" class="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white hover:bg-emerald-800 disabled:opacity-50" type="submit">保存并应用</button>
+                    <p id="save-status" class="text-sm" role="status"></p>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        const loginForm = document.getElementById('login-form');
+        const settingsForm = document.getElementById('settings-form');
+        const loginStatus = document.getElementById('login-status');
+        const saveStatus = document.getElementById('save-status');
+        const effortSelect = document.getElementById('reasoning-effort');
+
+        async function request(url, options = {}) {
+            const response = await fetch(url, { credentials: 'include', ...options });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || '请求失败，请稍后重试。');
+            return data;
+        }
+
+        function showSettings(data) {
+            document.getElementById('base-url').value = data.base_url || '';
+            document.getElementById('model').value = data.model || '';
+            document.getElementById('key-status').textContent = data.api_key_configured ? '当前已配置 API Key；留空不会覆盖。' : '当前尚未配置 API Key。';
+            effortSelect.innerHTML = '';
+            (data.reasoning_efforts || []).forEach((effort) => {
+                const option = document.createElement('option');
+                option.value = effort;
+                option.textContent = effort;
+                option.selected = effort === data.reasoning_effort;
+                effortSelect.appendChild(option);
+            });
+            loginForm.classList.add('hidden');
+            settingsForm.classList.remove('hidden');
+        }
+
+        async function loadSettings() {
+            const data = await request('/api/admin/settings');
+            showSettings(data);
+        }
+
+        loginForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            loginStatus.textContent = '正在验证…';
+            loginStatus.className = 'text-sm text-slate-500';
+            try {
+                await request('/api/admin/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: document.getElementById('password').value })
+                });
+                document.getElementById('password').value = '';
+                await loadSettings();
+            } catch (error) {
+                loginStatus.textContent = error.message;
+                loginStatus.className = 'text-sm text-red-700';
+            }
+        });
+
+        settingsForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const saveButton = document.getElementById('save');
+            const apiKey = document.getElementById('api-key').value.trim();
+            const payload = {
+                base_url: document.getElementById('base-url').value.trim(),
+                model: document.getElementById('model').value.trim(),
+                reasoning_effort: effortSelect.value
+            };
+            if (apiKey) payload.api_key = apiKey;
+            saveButton.disabled = true;
+            saveStatus.textContent = '正在保存…';
+            saveStatus.className = 'text-sm text-slate-500';
+            try {
+                const data = await request('/api/admin/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                document.getElementById('api-key').value = '';
+                showSettings(data);
+                saveStatus.textContent = '已保存并应用到后续请求。';
+                saveStatus.className = 'text-sm text-emerald-700';
+            } catch (error) {
+                saveStatus.textContent = error.message;
+                saveStatus.className = 'text-sm text-red-700';
+            } finally {
+                saveButton.disabled = false;
+            }
+        });
+
+        document.getElementById('logout').addEventListener('click', async () => {
+            await request('/api/admin/session', { method: 'DELETE' });
+            settingsForm.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            loginStatus.textContent = '';
+        });
+
+        loadSettings().catch(() => {});
+    </script>
+</body>
+</html>
