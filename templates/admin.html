@@ -16,9 +16,20 @@
             <form id="login-form" class="mt-6 space-y-4">
                 <label class="block">
                     <span class="text-sm font-medium">管理密码</span>
-                    <input id="password" type="password" autocomplete="current-password" required
-                           class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
-                           placeholder="输入管理密码">
+                    <span class="relative mt-1 block">
+                        <input id="password" type="password" autocomplete="current-password" required
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 pr-16 focus:border-slate-500 focus:outline-none"
+                               placeholder="输入管理密码">
+                        <button id="password-toggle" type="button"
+                                class="absolute inset-y-0 right-0 flex items-center gap-1 px-3 text-sm text-slate-500 hover:text-slate-900"
+                                aria-label="显示密码" aria-pressed="false">
+                            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                                <circle cx="12" cy="12" r="2.5"></circle>
+                            </svg>
+                            <span id="password-toggle-text">显示</span>
+                        </button>
+                    </span>
                 </label>
                 <button class="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white hover:bg-slate-700" type="submit">进入管理页</button>
                 <p id="login-status" class="text-sm" role="alert"></p>
@@ -82,6 +93,9 @@
         const loginStatus = document.getElementById('login-status');
         const saveStatus = document.getElementById('save-status');
         const effortSelect = document.getElementById('reasoning-effort');
+        const passwordInput = document.getElementById('password');
+        const passwordToggle = document.getElementById('password-toggle');
+        const passwordToggleText = document.getElementById('password-toggle-text');
 
         async function request(url, options = {}) {
             const response = await fetch(url, { credentials: 'include', ...options });
@@ -127,6 +141,15 @@
                 loginStatus.textContent = error.message;
                 loginStatus.className = 'text-sm text-red-700';
             }
+        });
+
+        passwordToggle.addEventListener('click', () => {
+            const shouldReveal = passwordInput.type === 'password';
+            passwordInput.type = shouldReveal ? 'text' : 'password';
+            passwordToggle.setAttribute('aria-label', shouldReveal ? '隐藏密码' : '显示密码');
+            passwordToggle.setAttribute('aria-pressed', String(shouldReveal));
+            passwordToggleText.textContent = shouldReveal ? '隐藏' : '显示';
+            passwordInput.focus();
         });
 
         settingsForm.addEventListener('submit', async (event) => {
