@@ -11,6 +11,10 @@
   <img src="ChatCV_Demo.gif" alt="agentic-me 演示" width="500"/>
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/resume-chat-interface.png" alt="agentic-me 简历对话界面" width="800"/>
+</p>
+
 ## 功能
 
 - **简历对话**：自然地回答候选人的经历、项目与技能相关问题。
