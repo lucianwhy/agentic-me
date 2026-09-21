@@ -1,167 +1,146 @@
-# ChatCV - Your Resume, Now Conversational
+# agentic-me：让你的简历可以对话
 
-Ever wished recruiters could just *ask* your resume questions instead of skimming through bullet points? That's exactly what ChatCV does.
+把 PDF 简历变成可交互的个人卡片。招聘方可以直接询问你的经历、项目和技能，而不再只能浏览静态条目。
 
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue)](./Dockerfile)
+[![Docker](https://img.shields.io/badge/Docker-可选-blue)](./Dockerfile)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
-## Demo
+## 演示
 
 <p align="center">
-  <img src="ChatCV_Demo.gif" alt="ChatCV Demo" width="500"/>
+  <img src="ChatCV_Demo.gif" alt="agentic-me 演示" width="500"/>
 </p>
 
-## What it does
-ChatCV lets you stand out by turning your resume into a conversation. Instead of hoping recruiters notice the right details, you give them a tool to dig deeper when something catches their interest.
+## 功能
 
----
+- **简历对话**：自然地回答候选人的经历、项目与技能相关问题。
+- **岗位匹配**：上传职位描述，获得与简历的匹配分析。
+- **可选访问控制**：可以公开部署，也可用邀请码限制访问。
+- **基础安全控制**：让对话保持专业、聚焦。
+- **可选 Docker**：默认直接运行，也可用 Docker 部署。
 
-## Who's This For?
+## 适用对象
 
-**Job Seekers & Professionals**
-- Stand out from the pile of identical PDFs
-- Let interested recruiters explore your background in depth
-- Show off your technical skills by adpating (and enhancing) this solution for your CV
-- Provide a memorable, interactive experience
-- Be available to answer questions 24/7
+**求职者与职场人士**
 
-**Recruiters & Hiring Managers**
-- When a candidate catches your interest, dig deeper instantly
-- Get specific answers instead of guessing from bullet points
-- AI-powered job fit analysis for promising candidates
-- **Coming soon**: A tool to compare multiple candidate's CVs for a certain job description
+- 从同质化的 PDF 简历中脱颖而出。
+- 让感兴趣的招聘方按需深入了解你的背景。
+- 在现有方案上定制和扩展，展示技术能力。
+- 提供更有记忆点的互动体验，随时响应咨询。
 
----
+**招聘方与用人经理**
 
-## What You Get
+- 对候选人感兴趣时，立即了解更多细节。
+- 获得针对性回答，而非从简历条目中猜测。
+- 使用 AI 辅助分析候选人与岗位的匹配度。
 
-**Chat with Resume**: Natural conversation about any aspect of a candidate's background
-**Smart Job Matching**: Upload a job description, get detailed fit analysis
-**Optional Security**: Deploy publicly or lock it down with invite codes
-**Built-in Safety**: Keeps conversations professional and on-topic
-**Docker Ready**: Deploy anywhere in minutes
+## 环境要求
 
-
----
-
-**中文说明（推荐）：** 见 [README.zh.md](./README.zh.md)。默认用 venv + uvicorn 运行，不需要 Docker。
-
-## Getting Started
-
-**What you need:**
 - Python 3.11+
-- An OpenAI-compatible API key when you want chat (DeepSeek etc. via `OPENAI_BASE_URL`). The homepage and `/health` start without a key.
+- 对话功能需要 OpenAI 兼容的 API Key（可使用 OpenAI、DeepSeek 等）。未配置 Key 时，首页和 `/health` 仍可启动。
 
-### 1. Get the Code
+## 快速开始
+
+### 1. 获取代码
+
 ```bash
-git clone https://github.com/lucianwhy/ChatCV.git
-cd ChatCV
+git clone https://github.com/lucianwhy/agentic-me.git
+cd agentic-me
 cp .env.example .env
 ```
 
-### 2. Add Your Secrets
-Edit the `.env` file:
+### 2. 配置模型
+
+编辑 `.env`：
+
 ```bash
-# Required later for chat (homepage works without it)
+# 对话功能需要配置
 OPENAI_API_KEY="your_openai_api_key_here"
-# Optional OpenAI-compatible gateway (DeepSeek, etc.)
+
+# 可选：使用 DeepSeek 等 OpenAI 兼容服务
 # OPENAI_BASE_URL="https://api.deepseek.com"
 # LLM_MODEL=deepseek-chat
 
-# Optional extras (leave empty if you don't need them)
-LANGSMITH_API_KEY="your_langsmith_key"     # For advanced analytics
+# 可选功能
+LANGSMITH_API_KEY="your_langsmith_key"
 LANGSMITH_TRACING=false
-
-GUARDRAILS_TOKEN="your_guardrails_token"   # Extra safety (slower build)
+GUARDRAILS_TOKEN="your_guardrails_token"
 ```
 
-**Pro tip**: The app works fine without the optional stuff. Only add them if you actually need the features.
+### 3. 换成你的资料
 
-### 3. Make It Yours
-- Swap out `data/CV_Demo.pdf` with your actual resume
-- Edit `data/about_me.md` with extra info not in your CV (or delete it)
-- Edit `config/base.yml` if you want to change file paths or naming
-- replace `/static/default-avatar.png` with your profile picture
+- 用自己的简历替换 `data/CV_Demo.pdf`。
+- 编辑 `data/about_me.md`，补充简历中没有的信息；不需要时可以删除。
+- 在 `config/base.yml` 中修改候选人信息、文件路径和名称。
+- 用你的头像替换 `static/default-avatar.png`。
 
-### 4. Start the App (no Docker)
+### 4. 启动服务
+
+默认方式无需 Docker：
+
 ```bash
 ./scripts/run.sh
 ```
-This creates `.venv`, installs `requirements.txt`, and runs `uvicorn main:app --reload`.
 
-Docker remains optional:
+该脚本会创建 `.venv`、安装 `requirements.txt` 并运行 `uvicorn main:app --reload`。随后访问 `http://localhost:8000`。
+
+Docker 是可选方式：
+
 ```bash
 docker compose up --build
 ```
-### 5. Try It Out
-Head to `http://localhost:8000` and start chatting with your resume!
 
----
+## 建立向量库
 
-## Deploy to the Cloud
+配置好 API Key 并替换简历后，运行：
 
-The Docker container runs anywhere. Deploy it to your favorite cloud platform - AWS, Azure, GCP, whatever works for you.
+```bash
+source .venv/bin/activate
+./scripts/ingest.sh
+# 或：python -m app.modules.rag_pipeline --ingest
+```
 
-**Coming soon**: Step-by-step Azure deployment guide (because that's what I use).
+服务在已有 API Key、但没有向量库时也会尝试自动入库；若失败会返回明确的中文 503 错误。
 
----
+## 访问控制
 
-## Access Control
+保持以下配置即可公开访问：
 
-
-**Option 1: Keep it public**
 ```bash
 INVITE_CODES={}
 ```
-Perfect for personal websites or internal demos.
 
-**Option 2: Lock it down**
+只允许特定招聘方访问时，可设置邀请码：
+
 ```bash
-INVITE_CODES={
-  "RECRUITER1": {"company": "TechCorp", "recruiter": "Jane Smith", "active": true},
-  "DEMO2024": {"company": "Demo Access", "recruiter": "Public Demo", "active": true}
-}
+INVITE_CODES={"ACME": {"company": "某公司", "recruiter": "张三", "active": true}}
 ```
-Give specific people access with custom invite codes.
 
----
+## 常用接口
 
-## How It Works
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/` | 个人卡片与对话页面 |
+| GET | `/health` | 健康检查，并返回 `llm_configured`、`vectorstore_ready` |
+| POST | `/chat` | RAG 对话 |
+| POST | `/summary` | 生成中文摘要 |
+| POST | `/job-match` | 岗位匹配分析 |
+| GET | `/auth/status` | 公开模式下返回 `auth_enabled: false` |
 
-**The Stack:**
-- FastAPI backend for the API
-- Retrieval Augmented Generation (RAG):
-  - ChromaDB as Database
-  - OpenAI API (or Ollama locally) as LLM
-- LangChain connecting the dots
-- Guardrails to keep things professional and save
+开发环境还提供 `/docs`。
 
-**The Flow:**
-1. Your resume gets chopped up and embedded into a vector database
-2. When someone asks a question, we find the most relevant parts
-3. The LLM writes a natural response using that context (and chat history)
-4. Safety filters make sure everything stays professional
+## 部署
 
-Simple, but it works really well.
+Docker 容器可部署到任意支持 Docker 的平台。非 Docker 部署时，使用 Python 虚拟环境安装依赖，并在生产环境去掉 `--reload` 即可。
 
----
+## 贡献
 
-## Want to Contribute?
+欢迎提交 Issue 或 Pull Request。开始开发前请运行 `pre-commit install`，以避免 CI 检查失败。
 
-Got ideas? Found bugs? Want to add features?
+## 致谢
 
-Just open an issue or send a PR. I'm always looking to make this better.
+- [LangChain](https://langchain.com/)
+- [ChromaDB](https://www.trychroma.com/)
+- [Guardrails AI](https://www.guardrailsai.com/)
 
-**Before you code:** Run `pre-commit install` so the CI doesn't yell at you.
-
----
-
-## Thanks To
-
-- [LangChain](https://langchain.com/) for LLM magic
-- [ChromaDB](https://www.trychroma.com/) for vector search
-- [Guardrails AI](https://www.guardrailsai.com/) for keeping it safe
-
----
-
-**Like this project? Give it a ⭐ - it helps more people find it!**
+如果这个项目对你有帮助，欢迎点一个 Star。
