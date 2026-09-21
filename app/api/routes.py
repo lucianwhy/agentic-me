@@ -21,6 +21,7 @@ from app.auth.auth import (
     logout_user,
     require_auth,
 )
+from app.config import config
 from app.modules.job_matching import (
     analyze_job_match,
     process_job_description,
@@ -44,6 +45,13 @@ from app.utils.logging_config import api_logger
 
 router = APIRouter()
 advanced_analytics = AdvancedAnalytics()
+
+
+def _should_use_secure_cookie(request: Request) -> bool:
+    """Set Secure only when the browser is actually connected through HTTPS."""
+    forwarded_scheme = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    scheme = (forwarded_scheme or request.url.scheme).lower()
+    return config.security.secure_cookies and scheme == "https"
 
 
 def _extract_answer_text(result: dict) -> str:
@@ -117,11 +125,8 @@ async def login(
         session_token, invite_code, user_info.get("company", "Unknown")
     )
 
-    from app.config import config
-
     host = request.headers.get("host", "").lower()
-    is_local = "localhost" in host or "127.0.0.1" in host
-    secure_cookies = config.security.secure_cookies and not is_local
+    secure_cookies = _should_use_secure_cookie(request)
 
     api_logger.debug(
         f"Setting session cookie (secure={secure_cookies}, host={host}) for invite code: {invite_code}"
@@ -196,15 +201,11 @@ async def admin_login(
     if not token:
         raise HTTPException(status_code=401, detail="管理密码不正确。")
 
-    host = request.headers.get("host", "").lower()
-    is_local = "localhost" in host or "127.0.0.1" in host
-    from app.config import config
-
     response.set_cookie(
         key=ADMIN_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=config.security.secure_cookies and not is_local,
+        secure=_should_use_secure_cookie(request),
         samesite="lax",
         max_age=config.security.session_timeout_hours * 60 * 60,
     )
