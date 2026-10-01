@@ -19,13 +19,32 @@ ADMIN_COOKIE_NAME = "admin_session"
 ENV_FILE = Path(".env")
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh", "max")
 
+ADMIN_DISABLED_MESSAGE = "管理功能未启用：服务器未配置 ADMIN_PASSWORD，已拒绝登录。"
+
 _admin_sessions: set[str] = set()
 _lock = RLock()
 
 
+class AdminDisabledError(RuntimeError):
+    """Raised when no ADMIN_PASSWORD is configured, so admin access is off."""
+
+
+def admin_enabled() -> bool:
+    return config.resolved_admin_password() is not None
+
+
 def create_admin_session(password: str) -> str | None:
-    """Issue an in-memory session token when the configured password matches."""
-    if not secrets.compare_digest(password, config.resolved_admin_password()):
+    """Issue an in-memory session token when the configured password matches.
+
+    Raises AdminDisabledError when no admin password is configured; there is
+    no fallback/default password.
+    """
+    expected = config.resolved_admin_password()
+    if expected is None:
+        raise AdminDisabledError(ADMIN_DISABLED_MESSAGE)
+    if not password or not secrets.compare_digest(
+        password.encode("utf-8"), expected.encode("utf-8")
+    ):
         return None
     token = secrets.token_urlsafe(32)
     with _lock:
@@ -42,6 +61,8 @@ def revoke_admin_session(token: str | None) -> None:
 
 def require_admin(request: Request) -> None:
     """FastAPI dependency that protects administration APIs."""
+    if not admin_enabled():
+        raise HTTPException(status_code=503, detail=ADMIN_DISABLED_MESSAGE)
     token = request.cookies.get(ADMIN_COOKIE_NAME)
     with _lock:
         authenticated = bool(token and token in _admin_sessions)

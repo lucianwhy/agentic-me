@@ -279,10 +279,14 @@ class AppConfig(BaseSettings):
         provider = str(self.llm.provider).lower()
         return "ollama" not in provider
 
-    def resolved_admin_password(self) -> str:
-        """Return the local admin password, with a user-requested default."""
-        value = (self.admin_password or os.getenv("ADMIN_PASSWORD") or "admin123").strip()
-        return value or "admin123"
+    def resolved_admin_password(self) -> str | None:
+        """Return the configured admin password, or None when admin is disabled.
+
+        There is intentionally no default password: set ADMIN_PASSWORD only in
+        the server's environment / .env file to enable the /admin settings page.
+        """
+        value = (self.admin_password or os.getenv("ADMIN_PASSWORD") or "").strip()
+        return value or None
 
     def cv_public_url(self) -> str:
         """URL path for downloading the CV via the /data static mount."""

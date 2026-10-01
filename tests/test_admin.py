@@ -15,8 +15,22 @@ def _restore_environment(values: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
-def test_admin_page_is_available_but_settings_require_password():
+def test_admin_is_disabled_without_configured_password(monkeypatch):
     client = TestClient(app, base_url="https://testserver")
+    monkeypatch.setattr(config, "admin_password", None)
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    assert config.resolved_admin_password() is None
+    assert client.get("/admin").status_code == 200
+    for candidate in ("change-me", "", "password"):
+        response = client.post("/api/admin/session", json={"password": candidate})
+        assert response.status_code == 503
+        assert "ADMIN_PASSWORD" in response.json()["detail"]
+    assert client.get("/api/admin/settings").status_code == 503
+
+
+def test_admin_page_is_available_but_settings_require_password(monkeypatch):
+    client = TestClient(app, base_url="https://testserver")
+    monkeypatch.setattr(config, "admin_password", "test-admin-pass")
     assert client.get("/admin").status_code == 200
     assert client.get("/api/admin/settings").status_code == 401
     assert client.post("/api/admin/session", json={"password": "wrong"}).status_code == 401
@@ -27,7 +41,7 @@ def test_admin_can_save_runtime_model_settings_without_exposing_api_key(
 ):
     client = TestClient(app, base_url="https://testserver")
     monkeypatch.setattr(admin, "ENV_FILE", tmp_path / ".env")
-    monkeypatch.setattr(config, "admin_password", "admin123")
+    monkeypatch.setattr(config, "admin_password", "test-admin-pass")
     original_env = {
         key: os.environ.get(key)
         for key in (
@@ -48,7 +62,7 @@ def test_admin_can_save_runtime_model_settings_without_exposing_api_key(
         "llm_url": config.llm.base_url,
     }
     try:
-        assert client.post("/api/admin/session", json={"password": "admin123"}).status_code == 200
+        assert client.post("/api/admin/session", json={"password": "test-admin-pass"}).status_code == 200
         response = client.post(
             "/api/admin/settings",
             json={

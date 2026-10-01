@@ -71,6 +71,16 @@ LANGSMITH_TRACING=false
 GUARDRAILS_TOKEN="your_guardrails_token"
 ```
 
+### 管理页面（/admin）
+
+`/admin` 可在线修改模型设置，需要管理密码。仓库中**没有默认密码**，请只在服务器的 `.env` 中设置：
+
+```bash
+ADMIN_PASSWORD=change-me   # 换成你自己的强密码，切勿提交到仓库
+```
+
+未设置 `ADMIN_PASSWORD` 时，管理登录与设置接口会被禁用（返回 503 和中文提示）。
+
 ### 3. 换成你的资料
 
 - 用自己的简历替换 `data/CV_Demo.pdf`。

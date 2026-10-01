@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.admin import (
     ADMIN_COOKIE_NAME,
+    AdminDisabledError,
     create_admin_session,
     public_settings,
     require_admin,
@@ -197,7 +198,10 @@ async def admin_login(
     request: Request, response: Response, password: str = Body(..., embed=True)
 ):
     """Authenticate the hidden local administration page."""
-    token = create_admin_session(password.strip())
+    try:
+        token = create_admin_session(password.strip())
+    except AdminDisabledError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not token:
         raise HTTPException(status_code=401, detail="管理密码不正确。")
 
