@@ -55,3 +55,5 @@ frontend/.vite/
 # The Python patterns above (lib/, dist/) must not swallow the frontend:
 !frontend/src/lib/
 !frontend/dist/
+# Chat model list managed from /admin (server-side runtime state)
+data/models.json

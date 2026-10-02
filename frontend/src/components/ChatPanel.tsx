@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { AuthRequiredError, streamChat, type ChatTurn, type Profile } from '@/lib/api'
-import { VISIBLE_MODELS } from '@/lib/models'
+import type { ModelOption } from '@/lib/models'
 
 type UserMsg = { id: number; role: 'user'; text: string }
 type Message = UserMsg | AssistantMsg
@@ -18,7 +18,8 @@ type Message = UserMsg | AssistantMsg
 type Props = {
   profile: Profile
   model: string
-  modelLabels: Record<string, string>
+  /** Switcher options from GET /models; null while loading. */
+  models: ModelOption[] | null
   onModelChange: (model: string) => void
   /** Returns false (and opens the login dialog) when auth is enabled and the visitor is not logged in. */
   ensureAuth: () => boolean
@@ -41,7 +42,7 @@ function buildHistory(messages: Message[]): ChatTurn[] {
   return turns.slice(-HISTORY_TURNS)
 }
 
-export function ChatPanel({ profile, model, modelLabels, onModelChange, ensureAuth, onAuthRequired }: Props) {
+export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, onAuthRequired }: Props) {
   const { max_query_length: maxLen, rate_limit_ms: rateLimitMs } = profile.limits
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -254,14 +255,14 @@ export function ChatPanel({ profile, model, modelLabels, onModelChange, ensureAu
               className="max-h-40 min-h-[60px] resize-none rounded-b-none border-0 bg-transparent px-3.5 pt-3 pb-1 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
             />
             <div className="flex items-center justify-between gap-2 px-2.5 pt-1 pb-2.5">
-              <Select value={model} onValueChange={onModelChange}>
+              <Select value={model} onValueChange={onModelChange} disabled={!models?.length}>
                 <SelectTrigger size="sm" className="h-8 text-xs font-medium text-zinc-700" aria-label="选择对话模型">
-                  <SelectValue />
+                  <SelectValue placeholder={models ? '默认模型' : '加载中…'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {VISIBLE_MODELS.map((m) => (
-                    <SelectItem key={m.value} value={m.value} className="text-xs">
-                      {modelLabels[m.value] ?? m.label}
+                  {(models ?? []).map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="text-xs">
+                      {m.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

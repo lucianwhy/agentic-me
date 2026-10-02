@@ -97,8 +97,6 @@ chat_fallback_response: |
 
   请换一种问法，或询问经历、项目、技能、教育背景。
 
-conversation_history_prompt: "结合以上对话，生成一条用于检索 {candidate_name} 背景资料的搜索查询。"
-
 # === 摘要提示词 ===
 summary_prompt_template: |
   请用中文为 {candidate_name} 写一份 150–300 字的专业摘要，面向招聘方。

@@ -130,12 +130,18 @@ def update_settings(
     *,
     api_key: str | None,
     base_url: str,
-    model: str,
+    model: str | None,
     reasoning_effort: str,
 ) -> dict[str, object]:
-    """Persist safe settings and update the in-process configuration immediately."""
+    """Persist safe settings and update the in-process configuration immediately.
+
+    ``model`` is optional (None keeps the current one). A model that is in the chat
+    model list also becomes the switcher default, so there is a single default.
+    """
+    from app.model_registry import get_model_registry
+
     normalized_base_url = _validate_base_url(base_url)
-    normalized_model = _validate_model(model)
+    normalized_model = _validate_model(model) if model is not None else config.llm.model
     normalized_effort = reasoning_effort.strip().lower()
     if normalized_effort not in REASONING_EFFORTS:
         raise ValueError("不支持的分析强度。")
@@ -164,8 +170,23 @@ def update_settings(
         if api_key is not None:
             config.openai_api_key = api_key.strip()
 
+    registry = get_model_registry()
+    if model is not None and registry.get(normalized_model) is not None:
+        registry.set_default(normalized_model)
+
     _reset_cached_llm_clients()
     return public_settings()
+
+
+def sync_default_model(model: str) -> None:
+    """Keep LLM_MODEL (summary / job match / health) equal to the chat default."""
+    with _lock:
+        if config.llm.model == model:
+            return
+        _write_env_values({"LLM_MODEL": model})
+        os.environ["LLM_MODEL"] = model
+        config.llm.model = model
+    _reset_cached_llm_clients()
 
 
 def _reset_cached_llm_clients() -> None:

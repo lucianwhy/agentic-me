@@ -58,11 +58,14 @@ class ModelProvider:
             kwargs["base_url"] = base_url
         return kwargs
 
-    def get_language_model(self, model: str | None = None) -> Any:
+    def get_language_model(
+        self, model: str | None = None, reasoning_effort: str | None = None
+    ) -> Any:
         """Return the configured chat model. Does not call the network.
 
-        Optional ``model`` overrides ``config.llm.model`` for this instance only
-        (used by the per-request Sol/Luna switcher).
+        Optional ``model`` overrides ``config.llm.model`` for this instance only (used by
+        the per-request model switcher); ``reasoning_effort`` overrides the global
+        REASONING_EFFORT (per-model setting from the admin model list).
         """
         provider = str(self.config.llm.provider).lower()
         model_name = (model or "").strip() or self.config.llm.model
@@ -105,7 +108,9 @@ class ModelProvider:
             == "responses",
             **self._openai_kwargs(for_embedding=False),
         }
-        effort = (getattr(self.config.llm, "reasoning_effort", None) or "").strip()
+        effort = (
+            reasoning_effort or getattr(self.config.llm, "reasoning_effort", None) or ""
+        ).strip()
         if effort:
             # OpenAI / nuoapi Chat Completions: reasoning_effort
             llm_kwargs["reasoning_effort"] = effort

@@ -9,11 +9,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.admin import (
     ADMIN_COOKIE_NAME,
+    REASONING_EFFORTS,
     AdminDisabledError,
     create_admin_session,
     public_settings,
     require_admin,
     revoke_admin_session,
+    sync_default_model,
     update_settings,
 )
 from app.auth.auth import (
@@ -30,11 +32,10 @@ from app.modules.job_matching import (
     process_job_description,
 )
 from app.modules.profile import build_public_profile
+from app.model_registry import ModelRegistryError, get_model_registry
 from app.modules.rag_pipeline import (
-    ALLOWED_CHAT_MODELS,
     get_chat_completion,
     get_chat_stream,
-    normalize_chat_model,
 )
 from app.modules.readiness import (
     LLMNotConfigured,
@@ -238,11 +239,14 @@ async def get_admin_settings(_: None = Depends(require_admin)):
 async def save_admin_settings(
     api_key: str | None = Body(None, embed=True),
     base_url: str = Body("", embed=True),
-    model: str = Body(..., embed=True),
+    model: str | None = Body(None, embed=True),
     reasoning_effort: str = Body(..., embed=True),
     _: None = Depends(require_admin),
 ):
-    """Persist OpenAI-compatible model settings and apply them immediately."""
+    """Persist OpenAI-compatible model settings and apply them immediately.
+
+    `model` is optional; the chat default is managed with the model list below.
+    """
     try:
         return update_settings(
             api_key=api_key,
@@ -254,12 +258,70 @@ async def save_admin_settings(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-def _resolve_request_model(model: str | None) -> str | None:
-    """Validate optional model override; raise HTTP 400 on bad values."""
+def _admin_models_payload(data: dict[str, Any]) -> dict[str, Any]:
+    return {**data, "reasoning_efforts": list(REASONING_EFFORTS)}
+
+
+def _admin_models_call(fn, *args: Any) -> dict[str, Any]:
     try:
-        return normalize_chat_model(model)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        data = fn(*args)
+    except ModelRegistryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    sync_default_model(data["default"])
+    return _admin_models_payload(data)
+
+
+@router.get("/api/admin/models")
+async def admin_list_models(_: None = Depends(require_admin)):
+    """Chat models offered in the front-end switcher (with per-model settings)."""
+    return _admin_models_payload(get_model_registry().snapshot())
+
+
+@router.post("/api/admin/models")
+async def admin_add_model(
+    id: str = Body(..., embed=True),
+    label: str | None = Body(None, embed=True),
+    reasoning_effort: str | None = Body(None, embed=True),
+    _: None = Depends(require_admin),
+):
+    return _admin_models_call(get_model_registry().add, id, label, reasoning_effort)
+
+
+@router.post("/api/admin/models/default")
+async def admin_set_default_model(
+    id: str = Body(..., embed=True), _: None = Depends(require_admin)
+):
+    return _admin_models_call(get_model_registry().set_default, id)
+
+
+@router.post("/api/admin/models/order")
+async def admin_reorder_models(
+    ids: list[str] = Body(..., embed=True), _: None = Depends(require_admin)
+):
+    return _admin_models_call(get_model_registry().reorder, ids)
+
+
+@router.patch("/api/admin/models/{model_id:path}")
+async def admin_update_model(
+    model_id: str,
+    label: str | None = Body(None, embed=True),
+    reasoning_effort: str | None = Body(None, embed=True),
+    _: None = Depends(require_admin),
+):
+    return _admin_models_call(get_model_registry().update, model_id, label, reasoning_effort)
+
+
+@router.delete("/api/admin/models/{model_id:path}")
+async def admin_delete_model(model_id: str, _: None = Depends(require_admin)):
+    return _admin_models_call(get_model_registry().delete, model_id)
+
+
+def _resolve_request_model(model: str | None) -> str:
+    """Model for a chat request: listed models are honoured, anything else -> default."""
+    resolved, honoured = get_model_registry().resolve(model)
+    if not honoured:
+        api_logger.info(f"Model {str(model)[:64]!r} is not in the model list; using {resolved}")
+    return resolved
 
 
 @router.get("/api/profile")
@@ -334,18 +396,8 @@ def retrieve_demo(
 
 @router.get("/models")
 async def list_models():
-    """Return chat model whitelist and the current env default."""
-    from app.config import config
-
-    return {
-        "models": list(ALLOWED_CHAT_MODELS),
-        "default": config.llm.model,
-        "labels": {
-            "gpt-5.6-sol": "Sol（质量）",
-            "gpt-5.6-luna": "Luna（更快）",
-            "gpt-5.6-terra": "Terra",
-        },
-    }
+    """Chat models for the front-end switcher (managed in /admin; hot-reloaded)."""
+    return get_model_registry().public()
 
 
 def _clean_history(history: Any) -> list[dict[str, Any]]:

@@ -37,7 +37,12 @@ export type AuthStatus = {
   user?: { company?: string; code?: string } | null
 }
 
-export type ModelsResponse = { models: string[]; default: string; labels: Record<string, string> }
+export type ModelsResponse = {
+  models: string[]
+  default: string
+  labels: Record<string, string>
+  items?: { id: string; label: string }[]
+}
 
 /** Thrown when auth is enabled and the visitor has no session. */
 export class AuthRequiredError extends Error {

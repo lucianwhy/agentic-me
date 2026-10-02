@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { getAuthStatus, getModels, getProfile, logout, type AuthStatus, type Profile } from '@/lib/api'
-import { DEFAULT_MODEL, isSelectableModel, readStoredModel, storeModel } from '@/lib/models'
+import { pickModel, readStoredModel, storeModel, toOptions, type ModelOption } from '@/lib/models'
 
 type Auth = { enabled: boolean; authenticated: boolean; user: AuthStatus['user'] }
 
@@ -24,8 +24,9 @@ export default function App() {
   const [profileError, setProfileError] = useState<string | null>(null)
   const [auth, setAuth] = useState<Auth>({ enabled: false, authenticated: false, user: null })
   const [loginOpen, setLoginOpen] = useState(false)
-  const [model, setModel] = useState<string>(() => readStoredModel() ?? DEFAULT_MODEL)
-  const [modelLabels, setModelLabels] = useState<Record<string, string>>({})
+  // '' until GET /models answers; the server then uses its default model.
+  const [model, setModel] = useState<string>(() => readStoredModel() ?? '')
+  const [models, setModels] = useState<ModelOption[] | null>(null)
   const [tab, setTab] = useState('chat')
 
   useEffect(() => {
@@ -49,14 +50,21 @@ export default function App() {
       })
       .catch((error) => console.error('Authentication check failed:', error))
 
-    // Persist the initial choice; adopt the server default only if the user never chose one.
-    const stored = readStoredModel()
-    storeModel(stored ?? DEFAULT_MODEL)
-    getModels().then((data) => {
-      if (!data) return
-      if (data.labels) setModelLabels(data.labels)
-      if (!stored && isSelectableModel(data.default)) setModel(storeModel(data.default))
-    })
+    // The model list is managed in /admin; re-read it when the tab regains focus so
+    // admin changes show up without a reload.
+    const loadModels = () =>
+      getModels().then((data) => {
+        if (!data) {
+          setModels((prev) => prev ?? [])
+          return
+        }
+        setModels(toOptions(data))
+        setModel((current) => storeModel(pickModel(current || readStoredModel(), data)))
+      })
+    loadModels()
+    const onVisible = () => document.visibilityState === 'visible' && loadModels()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   const ensureAuth = useCallback(() => {
@@ -70,7 +78,10 @@ export default function App() {
     setLoginOpen(true)
   }, [])
 
-  const onModelChange = (value: string) => setModel(storeModel(value))
+  // Radix's hidden native <select> can report '' while options are still loading.
+  const onModelChange = (value: string) => {
+    if (value) setModel(storeModel(value))
+  }
 
   const onLogout = async () => {
     try {
@@ -127,7 +138,7 @@ export default function App() {
               <ChatPanel
                 profile={profile}
                 model={model}
-                modelLabels={modelLabels}
+                models={models}
                 onModelChange={onModelChange}
                 ensureAuth={ensureAuth}
                 onAuthRequired={onAuthRequired}

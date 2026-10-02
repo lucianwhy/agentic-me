@@ -1,32 +1,33 @@
-/** Model selector state, persisted in localStorage like the legacy page. */
+/** Model selector state. The list itself comes from GET /models (managed in /admin). */
+import type { ModelsResponse } from '@/lib/api'
+
 export const MODEL_STORAGE_KEY = 'chatcv_model'
-export const DEFAULT_MODEL = 'gpt-5.6-sol'
 
-/** Options shown in the selector (same two as the legacy page; labels may be overridden by GET /models). */
-export const VISIBLE_MODELS: { value: string; label: string }[] = [
-  { value: 'gpt-5.6-sol', label: 'Sol（质量）' },
-  { value: 'gpt-5.6-luna', label: 'Luna（更快）' },
-]
-
-const isVisible = (m: string | null | undefined): m is string => !!m && VISIBLE_MODELS.some((o) => o.value === m)
+export type ModelOption = { id: string; label: string }
 
 export function readStoredModel(): string | null {
   try {
-    const v = localStorage.getItem(MODEL_STORAGE_KEY)
-    return isVisible(v) ? v : null
+    return localStorage.getItem(MODEL_STORAGE_KEY)
   } catch {
     return null
   }
 }
 
 export function storeModel(model: string): string {
-  const value = isVisible(model) ? model : DEFAULT_MODEL
   try {
-    localStorage.setItem(MODEL_STORAGE_KEY, value)
+    localStorage.setItem(MODEL_STORAGE_KEY, model)
   } catch {
     /* storage unavailable */
   }
-  return value
+  return model
 }
 
-export { isVisible as isSelectableModel }
+export function toOptions(data: ModelsResponse): ModelOption[] {
+  if (data.items?.length) return data.items
+  return data.models.map((id) => ({ id, label: data.labels?.[id] ?? id }))
+}
+
+/** Keep the visitor's choice while it is still offered; otherwise use the server default. */
+export function pickModel(current: string | null, data: ModelsResponse): string {
+  return current && data.models.includes(current) ? current : data.default
+}

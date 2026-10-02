@@ -8,11 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.config import config
 from app.modules import rag_pipeline
 from app.modules.ark_embeddings import ArkMultimodalEmbeddings
-from app.modules.rag_pipeline import (
-    ChatRAGPipeline,
-    build_retrieval_query,
-    history_to_messages,
-)
+from app.modules.rag_pipeline import ChatRAGPipeline, history_to_messages
 
 
 class TestHistory:
@@ -38,20 +34,6 @@ class TestHistory:
         assert history_to_messages(None) == []
 
 
-class TestRetrievalQuery:
-    def test_no_history_unchanged(self):
-        assert build_retrieval_query("他会哪些数据库？", []) == "他会哪些数据库？"
-
-    def test_follow_up_gets_context(self):
-        hist = [HumanMessage(content="介绍多智能体项目"), AIMessage(content="...")]
-        q = build_retrieval_query("那这个项目用了什么数据库？", hist)
-        assert q.startswith("介绍多智能体项目") and q.endswith("那这个项目用了什么数据库？")
-
-    def test_standalone_question_unchanged(self):
-        hist = [HumanMessage(content="介绍多智能体项目")]
-        assert build_retrieval_query("他的实习经历是什么？", hist) == "他的实习经历是什么？"
-
-
 class _Recorder:
     def __init__(self):
         self.calls = []
@@ -61,34 +43,39 @@ class _Recorder:
         return ["doc"]
 
 
-def _fake_pipeline(mode):
-    cfg = SimpleNamespace(chat=SimpleNamespace(query_rewrite=mode))
-    return SimpleNamespace(config=cfg, base_retriever=_Recorder())
+def test_retrieval_uses_raw_question():
+    p = SimpleNamespace(base_retriever=_Recorder())
+    assert ChatRAGPipeline._retrieve(p, "那这个项目用了什么数据库？") == ["doc"]
+    assert p.base_retriever.calls == ["那这个项目用了什么数据库？"]
 
 
-class TestRetrieveModes:
-    hist = (HumanMessage(content="介绍多智能体项目"),)
+def test_history_reaches_answer_model_unchanged(monkeypatch):
+    """The answer chain gets the sanitized history; retrieval only sees the raw query."""
+    seen = {}
 
-    def test_heuristic_never_calls_llm(self):
-        p, rewriter = _fake_pipeline("heuristic"), _Recorder()
-        ChatRAGPipeline._retrieve(p, "这个呢", list(self.hist), rewriter)
-        assert rewriter.calls == []
-        assert p.base_retriever.calls == ["介绍多智能体项目\n这个呢"]
+    class Chain:
+        def stream(self, payload):
+            seen.update(payload)
+            yield "ok"
 
-    def test_llm_mode_without_history_skips_rewrite(self):
-        p, rewriter = _fake_pipeline("llm"), _Recorder()
-        ChatRAGPipeline._retrieve(p, "他会什么？", [], rewriter)
-        assert rewriter.calls == [] and p.base_retriever.calls == ["他会什么？"]
-
-    def test_llm_mode_with_history_rewrites(self):
-        p, rewriter = _fake_pipeline("llm"), _Recorder()
-        ChatRAGPipeline._retrieve(p, "这个呢", list(self.hist), rewriter)
-        assert len(rewriter.calls) == 1 and p.base_retriever.calls == []
-
-    def test_off_uses_raw_query(self):
-        p, rewriter = _fake_pipeline("off"), _Recorder()
-        ChatRAGPipeline._retrieve(p, "这个呢", list(self.hist), rewriter)
-        assert p.base_retriever.calls == ["这个呢"]
+    retriever = _Recorder()
+    fake = SimpleNamespace(
+        config=config,
+        base_retriever=retriever,
+        query_validator=SimpleNamespace(
+            validate_query_input=lambda q: q, validate_response_output=lambda a: a
+        ),
+        _initialize_qa_chain=lambda model: Chain(),
+        _history=lambda h: ChatRAGPipeline._history(SimpleNamespace(config=config), h),
+        _retrieve=lambda q: ChatRAGPipeline._retrieve(SimpleNamespace(base_retriever=retriever), q),
+        _fallback_text=lambda: "fallback",
+    )
+    monkeypatch.setattr(rag_pipeline, "is_llm_configured", lambda: True)
+    history = [{"role": "user", "content": "介绍 7-Agent 项目"}, {"role": "assistant", "content": "……"}]
+    events = list(ChatRAGPipeline.stream_completion(fake, "那这个项目用了什么数据库？", history=history))
+    assert retriever.calls == ["那这个项目用了什么数据库？"]
+    assert [m.content for m in seen["chat_history"]] == ["介绍 7-Agent 项目", "……"]
+    assert events[-1]["type"] == "done"
 
 
 def test_stream_emits_status_before_any_setup(monkeypatch):
@@ -97,7 +84,7 @@ def test_stream_emits_status_before_any_setup(monkeypatch):
     def boom(model):
         raise AssertionError("chain setup must happen after the first status event")
 
-    fake = SimpleNamespace(_chains=boom)
+    fake = SimpleNamespace(_initialize_qa_chain=boom)
     gen = ChatRAGPipeline.stream_completion(fake, "你好")
     assert next(gen) == {"type": "status", "stage": "retrieving"}
 
@@ -140,8 +127,8 @@ class TestEmbeddingCache:
 
 
 def test_chat_config_defaults():
-    assert config.chat.query_rewrite in {"heuristic", "llm", "off"}
-    assert config.chat.max_history_messages >= 2
+    assert config.chat.max_history_messages == 6
+    assert not hasattr(config.chat, "query_rewrite")
 
 
 @pytest.mark.parametrize("bad", [None, "x", 5, [1, "a"]])
