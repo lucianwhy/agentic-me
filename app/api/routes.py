@@ -2,6 +2,7 @@ import json
 import math
 import time
 from collections.abc import Iterator
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -28,6 +29,7 @@ from app.modules.job_matching import (
     analyze_job_match,
     process_job_description,
 )
+from app.modules.profile import build_public_profile
 from app.modules.rag_pipeline import (
     ALLOWED_CHAT_MODELS,
     get_chat_completion,
@@ -41,7 +43,6 @@ from app.modules.readiness import (
     is_llm_configured,
     is_vectorstore_ready,
 )
-from app.modules.profile import build_public_profile
 from app.modules.retrieval_demo import limiter as retrieval_limiter
 from app.modules.retrieval_demo import retrieve_with_scores
 from app.modules.summary_pipeline import get_auto_summary
@@ -347,11 +348,19 @@ async def list_models():
     }
 
 
+def _clean_history(history: Any) -> list[dict[str, Any]]:
+    """Client-sent recent turns; malformed input is ignored (the pipeline caps size)."""
+    if not isinstance(history, list):
+        return []
+    return [h for h in history[-20:] if isinstance(h, dict)]
+
+
 @router.post("/chat")
 async def chat(
     request: Request,
     query: str = Body(..., embed=True),
     model: str | None = Body(None, embed=True),
+    history: list[dict[str, Any]] | None = Body(None, embed=True),
     user_code: str = Depends(require_auth),
 ):
     """Handle chat queries. Returns Chinese JSON when the LLM or vectorstore is not ready."""
@@ -378,6 +387,7 @@ async def chat(
             query,
             user_metadata=user_metadata,
             model=resolved_model,
+            history=_clean_history(history),
         )
     except (LLMNotConfigured, VectorStoreNotReady):
         return _not_ready_response()
@@ -410,6 +420,7 @@ async def chat_stream(
     request: Request,
     query: str = Body(..., embed=True),
     model: str | None = Body(None, embed=True),
+    history: list[dict[str, Any]] | None = Body(None, embed=True),
     user_code: str = Depends(require_auth),
 ):
     """
@@ -449,7 +460,10 @@ async def chat_stream(
         accumulated: list[str] = []
         try:
             for event in get_chat_stream(
-                query, user_metadata=user_metadata, model=resolved_model
+                query,
+                user_metadata=user_metadata,
+                model=resolved_model,
+                history=_clean_history(history),
             ):
                 etype = event.get("type")
                 if etype == "token":

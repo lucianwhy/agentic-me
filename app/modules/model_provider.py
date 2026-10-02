@@ -1,11 +1,31 @@
 import logging
 import os
+import threading
 from typing import Any
 
+import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.config import AppConfig
 from app.modules.readiness import LLMNotConfigured
+
+# Shared across requests: one keep-alive HTTP client for the chat API and one embeddings
+# instance per (provider, model, base_url, key) so connections and the query-embedding
+# LRU survive between requests (chat pipeline, /api/retrieve, warm-up).
+_LLM_HTTP_CLIENT: httpx.Client | None = None
+_EMBEDDINGS: dict[tuple, Any] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def shared_llm_http_client() -> httpx.Client:
+    global _LLM_HTTP_CLIENT
+    with _SHARED_LOCK:
+        if _LLM_HTTP_CLIENT is None:
+            _LLM_HTTP_CLIENT = httpx.Client(
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=8, keepalive_expiry=120),
+                timeout=None,  # per-request timeout comes from ChatOpenAI(timeout=...)
+            )
+        return _LLM_HTTP_CLIENT
 
 
 class ModelProvider:
@@ -79,6 +99,10 @@ class ModelProvider:
             "model": model_name,
             "temperature": self.config.llm.temperature,
             "timeout": self.config.llm.timeout,
+            "http_client": shared_llm_http_client(),
+            # Explicit endpoint choice (see LLMConfig.api); faster TTFT on nuoapi.
+            "use_responses_api": getattr(self.config.llm, "api", "chat_completions")
+            == "responses",
             **self._openai_kwargs(for_embedding=False),
         }
         effort = (getattr(self.config.llm, "reasoning_effort", None) or "").strip()
@@ -130,13 +154,20 @@ class ModelProvider:
                 )
             from app.modules.ark_embeddings import ArkMultimodalEmbeddings
 
-            return ArkMultimodalEmbeddings(
-                api_key=api_key,
-                model=model_name,
-                base_url=self.config.embedding.base_url
-                or "https://ark.cn-beijing.volces.com/api/v3",
-                timeout=float(getattr(self.config.llm, "timeout", 60) or 60),
-            )
+            base_url = self.config.embedding.base_url or "https://ark.cn-beijing.volces.com/api/v3"
+            cache_key = ("ark", model_name, base_url, hash(api_key))
+            with _SHARED_LOCK:
+                cached = _EMBEDDINGS.get(cache_key)
+                if cached is None:
+                    cached = ArkMultimodalEmbeddings(
+                        api_key=api_key,
+                        model=model_name,
+                        base_url=base_url,
+                        timeout=float(getattr(self.config.llm, "timeout", 60) or 60),
+                        query_cache_size=self.config.chat.embedding_cache_size,
+                    )
+                    _EMBEDDINGS[cache_key] = cached
+            return cached
 
         if not self.config.resolved_api_key() and not os.getenv("OPENAI_API_KEY"):
             raise LLMNotConfigured(

@@ -17,6 +17,27 @@ class LLMConfig(BaseModel):
     timeout: int = 60
     reasoning_effort: str | None = "medium"
     base_url: str | None = None
+    # langchain-openai routes gpt-5.x to the Responses API by default; on nuoapi the
+    # Chat Completions endpoint streams its first token noticeably sooner. Env:
+    # LLM_API=responses to opt back in.
+    api: str = "chat_completions"
+
+
+class ChatConfig(BaseModel):
+    """Latency / conversation knobs for the chat pipeline."""
+
+    # How the retrieval query is built from the conversation:
+    #   heuristic: no extra LLM call; follow-ups are prefixed with the previous question (default)
+    #   llm:       history-aware LLM rewrite when there is history (slower, +4-10s)
+    #   off:       always retrieve with the raw question
+    query_rewrite: str = "heuristic"
+    # Most recent messages (user + assistant) the client may send as context.
+    max_history_messages: int = 6
+    max_history_chars: int = 1500
+    # LRU size for query embeddings (identical questions skip the embedding call).
+    embedding_cache_size: int = 256
+    # Load the vector store and open API connections in the background at startup.
+    warmup_on_startup: bool = True
 
 
 class OllamaConfig(BaseModel):
@@ -124,6 +145,7 @@ class AppConfig(BaseSettings):
     admin_password: str | None = Field(default=None, alias="ADMIN_PASSWORD")
     embedding_model_env: str | None = Field(default=None, alias="EMBEDDING_MODEL")
     reasoning_effort_env: str | None = Field(default=None, alias="REASONING_EFFORT")
+    query_rewrite_env: str | None = Field(default=None, alias="QUERY_REWRITE")
     embedding_provider_env: str | None = Field(default=None, alias="EMBEDDING_PROVIDER")
     embedding_base_url: str | None = Field(default=None, alias="EMBEDDING_BASE_URL")
     ark_api_key: str | None = Field(default=None, alias="ARK_API_KEY")
@@ -131,6 +153,7 @@ class AppConfig(BaseSettings):
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
 
     llm: LLMConfig = LLMConfig()
+    chat: ChatConfig = ChatConfig()
     ollama: OllamaConfig = OllamaConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
     vectorstore: VectorStoreConfig = VectorStoreConfig()
@@ -208,6 +231,16 @@ class AppConfig(BaseSettings):
         ).strip()
         if reasoning_effort:
             self.llm.reasoning_effort = reasoning_effort
+
+        llm_api = (os.getenv("LLM_API") or "").strip().lower()
+        if llm_api in ("chat_completions", "responses"):
+            self.llm.api = llm_api
+
+        query_rewrite = (
+            self.query_rewrite_env or os.getenv("QUERY_REWRITE") or ""
+        ).strip().lower()
+        if query_rewrite in ("heuristic", "llm", "off"):
+            self.chat.query_rewrite = query_rewrite
 
         embedding_model = (
             self.embedding_model_env or os.getenv("EMBEDDING_MODEL") or ""

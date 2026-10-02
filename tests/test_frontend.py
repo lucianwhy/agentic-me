@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 import main
@@ -77,7 +76,7 @@ class TestStreamStatusEvents:
     def test_status_and_sources_are_forwarded(self, monkeypatch):
         from app.api import routes
 
-        def fake_stream(query, user_metadata=None, model=None):
+        def fake_stream(query, user_metadata=None, model=None, history=None):
             yield {"type": "status", "stage": "retrieving"}
             yield {"type": "status", "stage": "generating", "source_count": 1}
             yield {"type": "token", "content": "你好"}

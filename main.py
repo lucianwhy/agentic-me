@@ -5,6 +5,9 @@ A FastAPI application that transforms static resumes into intelligent,
 conversational experiences using RAG (Retrieval-Augmented Generation).
 """
 
+import os
+import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -32,7 +35,25 @@ async def lifespan(app: FastAPI):
         ready["vectorstore_ready"],
         ready["auth_enabled"],
     )
+    if (
+        config.chat.warmup_on_startup
+        and ready["llm_configured"]
+        and os.getenv("CHATCV_WARMUP", "1") != "0"
+    ):
+        threading.Thread(target=_warmup, name="chatcv-warmup", daemon=True).start()
     yield
+
+
+def _warmup() -> None:
+    """Best-effort: build the chain, open pooled connections, prime the embedder."""
+    try:
+        from app.modules.rag_pipeline import get_chat_pipeline
+
+        t0 = time.perf_counter()
+        get_chat_pipeline().warmup()
+        logger.info("Warm-up finished in %.0f ms", (time.perf_counter() - t0) * 1000)
+    except Exception as exc:  # never block or crash startup
+        logger.warning("Warm-up skipped: %s", exc)
     logger.info("ChatCV application shutting down")
 
 

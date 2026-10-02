@@ -7,6 +7,8 @@ Uses POST /embeddings/multimodal — the standard /embeddings endpoint returns
 from __future__ import annotations
 
 import logging
+import threading
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -33,6 +35,7 @@ class ArkMultimodalEmbeddings(Embeddings):
         base_url: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         encoding_format: str = "float",
+        query_cache_size: int = 256,
     ) -> None:
         key = (api_key or "").strip()
         if not key:
@@ -47,6 +50,16 @@ class ArkMultimodalEmbeddings(Embeddings):
         self.timeout = timeout
         self.encoding_format = encoding_format
         self._endpoint = f"{self.base_url}/embeddings/multimodal"
+        # One pooled keep-alive client per instance (thread-safe), so each call does not
+        # pay a new TCP + TLS handshake to Ark.
+        self._client = httpx.Client(
+            timeout=self.timeout,
+            limits=httpx.Limits(max_keepalive_connections=4, keepalive_expiry=120),
+        )
+        # LRU of query embeddings: repeated questions (suggested chips, retries) skip the API.
+        self._cache_size = max(0, int(query_cache_size))
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._cache_lock = threading.Lock()
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -54,7 +67,25 @@ class ArkMultimodalEmbeddings(Embeddings):
         return [self._embed_one(text) for text in texts]
 
     def embed_query(self, text: str) -> list[float]:
-        return self._embed_one(text)
+        key = text if text is not None else ""
+        if self._cache_size:
+            with self._cache_lock:
+                hit = self._cache.get(key)
+                if hit is not None:
+                    self._cache.move_to_end(key)
+                    return list(hit)
+        vector = self._embed_one(key)
+        if self._cache_size:
+            with self._cache_lock:
+                self._cache[key] = vector
+                self._cache.move_to_end(key)
+                while len(self._cache) > self._cache_size:
+                    self._cache.popitem(last=False)
+        return list(vector)
+
+    def warmup(self) -> None:
+        """Open the pooled connection (one tiny embedding call)."""
+        self.embed_query("warmup")
 
     def _embed_one(self, text: str) -> list[float]:
         payload: dict[str, Any] = {
@@ -67,8 +98,7 @@ class ArkMultimodalEmbeddings(Embeddings):
             "Content-Type": "application/json",
         }
         try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(self._endpoint, json=payload, headers=headers)
+            response = self._client.post(self._endpoint, json=payload, headers=headers)
         except httpx.TimeoutException as exc:
             raise ArkEmbeddingsError(
                 f"Ark multimodal embedding timed out after {self.timeout}s"

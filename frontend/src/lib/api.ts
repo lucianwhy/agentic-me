@@ -143,11 +143,19 @@ type StreamHandlers = {
  * POST /chat/stream and parse the SSE wire protocol:
  *   data: {"type":"token","content":"..."} | {"type":"done",...} | {"type":"error","message":"..."}
  */
-export async function streamChat(query: string, model: string, { onToken, onStatus, onDone, onError, signal }: StreamHandlers = {}) {
+export type ChatTurn = { role: 'user' | 'assistant'; content: string }
+
+export async function streamChat(
+  query: string,
+  model: string,
+  { onToken, onStatus, onDone, onError, signal }: StreamHandlers = {},
+  history: ChatTurn[] = [],
+) {
   const response = await request('/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ query, model }),
+    // The server is stateless: each visitor's own recent turns travel with the request.
+    body: JSON.stringify({ query, model, history }),
     signal,
   })
   if (response.status === 401) throw new AuthRequiredError()

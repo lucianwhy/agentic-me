@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { AuthRequiredError, streamChat, type Profile } from '@/lib/api'
+import { AuthRequiredError, streamChat, type ChatTurn, type Profile } from '@/lib/api'
 import { VISIBLE_MODELS } from '@/lib/models'
 
 type UserMsg = { id: number; role: 'user'; text: string }
@@ -26,10 +26,28 @@ type Props = {
 }
 
 let nextId = 1
+const HISTORY_TURNS = 6
+
+/** Recent completed Q&A pairs (notices, errors and in-flight answers are skipped). */
+function buildHistory(messages: Message[]): ChatTurn[] {
+  const turns: ChatTurn[] = []
+  for (let i = 0; i < messages.length - 1; i++) {
+    const q = messages[i]
+    const a = messages[i + 1]
+    if (q.role === 'user' && a.role === 'assistant' && a.phase === 'done' && a.sources !== undefined && a.text) {
+      turns.push({ role: 'user', content: q.text }, { role: 'assistant', content: a.text })
+    }
+  }
+  return turns.slice(-HISTORY_TURNS)
+}
 
 export function ChatPanel({ profile, model, modelLabels, onModelChange, ensureAuth, onAuthRequired }: Props) {
   const { max_query_length: maxLen, rate_limit_ms: rateLimitMs } = profile.limits
   const [messages, setMessages] = useState<Message[]>([])
+  const messagesRef = useRef<Message[]>([])
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
   const [query, setQuery] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [rateLimited, setRateLimited] = useState(false)
@@ -85,6 +103,7 @@ export function ChatPanel({ profile, model, modelLabels, onModelChange, ensureAu
       if (submitting) return // one stream at a time
       lastRequestRef.current = now
 
+      const history = buildHistory(messagesRef.current)
       setSubmitting(true)
       appendUser(text)
       setQuery('')
@@ -120,7 +139,7 @@ export function ChatPanel({ profile, model, modelLabels, onModelChange, ensureAu
             if (controller.signal.aborted) return
             patchAssistant(bubbleId, { text: message, phase: 'error' })
           },
-        })
+        }, history)
       } catch (error) {
         if (controller.signal.aborted) return
         console.error('Query error:', error)
