@@ -1,4 +1,5 @@
 import json
+import math
 import time
 from collections.abc import Iterator
 
@@ -40,6 +41,9 @@ from app.modules.readiness import (
     is_llm_configured,
     is_vectorstore_ready,
 )
+from app.modules.profile import build_public_profile
+from app.modules.retrieval_demo import limiter as retrieval_limiter
+from app.modules.retrieval_demo import retrieve_with_scores
 from app.modules.summary_pipeline import get_auto_summary
 from app.utils.analytics import AdvancedAnalytics, log_login_event
 from app.utils.logging_config import api_logger
@@ -257,6 +261,76 @@ def _resolve_request_model(model: str | None) -> str | None:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/api/profile")
+async def public_profile():
+    """Public candidate profile for the frontend (read-only; no secrets)."""
+    return build_public_profile()
+
+
+_TRUSTED_PROXIES = {"127.0.0.1", "::1"}
+
+
+def _client_key(request: Request) -> str:
+    """Client id for rate limiting.
+
+    Proxy headers are trusted only when the direct peer is the local Nginx; otherwise
+    (e.g. someone hitting uvicorn's port directly) they could be forged. Nginx sets
+    X-Real-IP to $remote_addr; with X-Forwarded-For the *last* hop is the one Nginx
+    appended (earlier entries come from the client).
+    """
+    peer = request.client.host if request.client else "unknown"
+    if peer not in _TRUSTED_PROXIES:
+        return peer
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    forwarded = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    return real_ip or (forwarded[-1] if forwarded else peer)
+
+
+@router.post("/api/retrieve")
+def retrieve_demo(
+    request: Request,
+    query: str = Body(..., embed=True),
+    user_code: str = Depends(require_auth),
+):
+    """Retrieval-only demo: top-k chunks + exact cosine scores. No LLM call.
+
+    One embedding request per call, so it is rate-limited per client using
+    config.rate_limit (min interval + per-minute cap).
+    """
+    text = (query or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="问题不能为空")
+    if len(text) > config.security.max_query_length:
+        raise HTTPException(
+            status_code=422,
+            detail=f"问题过长，请控制在 {config.security.max_query_length} 字以内。",
+        )
+    if not is_llm_configured():
+        return _not_ready_response()
+
+    if config.rate_limit.enabled:
+        wait = retrieval_limiter.check(_client_key(request))
+        if wait > 0:
+            return JSONResponse(
+                status_code=429,
+                content={"message": "发送太频繁，请稍后再试。", "retry_after": round(wait, 1)},
+                headers={"Retry-After": str(max(1, math.ceil(wait)))},
+            )
+
+    try:
+        result = retrieve_with_scores(text)
+    except (LLMNotConfigured, VectorStoreNotReady):
+        return _not_ready_response()
+    except Exception as exc:
+        api_logger.error(f"Retrieval demo failed: {type(exc).__name__}: {exc!s}")
+        return JSONResponse(status_code=502, content={"message": "检索失败，请稍后重试"})
+
+    api_logger.info(
+        f"Retrieval demo for {user_code}: {len(result['chunks'])} chunks in {result['took_ms']}ms"
+    )
+    return result
+
+
 @router.get("/models")
 async def list_models():
     """Return chat model whitelist and the current env default."""
@@ -342,6 +416,7 @@ async def chat_stream(
     Stream chat answers as Server-Sent Events (SSE).
 
     Wire protocol (`text/event-stream`):
+      data: {"type":"status","stage":"retrieving"|"generating"}  (informational)
       data: {"type":"token","content":"..."}
       data: {"type":"done","sources":[...]}
       data: {"type":"error","message":"..."}

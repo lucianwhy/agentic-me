@@ -6,10 +6,11 @@ conversational experiences using RAG (Retrieval-Augmented Generation).
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -48,8 +49,31 @@ logger.info("ChatCV application starting up")
 
 app.include_router(chat_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/data", StaticFiles(directory="data"), name="data")
+
+
+# Only the CV PDF is public under /data (its URL is config.cv_public_url()). The rest of
+# data/ (analytics.log, vector_db/, about_me.md, ...) must never be served.
+DATA_DIR = Path(__file__).resolve().parent / "data"
+
+
+@app.api_route("/data/{file_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+async def public_data_file(file_path: str) -> Response:
+    public_name = config.cv_public_url().removeprefix("/data/")
+    cv_file = (Path(__file__).resolve().parent / config.data.cv_path).resolve()
+    if file_path != public_name or not cv_file.is_file() or DATA_DIR not in cv_file.parents:
+        return Response(status_code=404)
+    return FileResponse(cv_file, media_type="application/pdf")
 templates = Jinja2Templates(directory="templates")
+
+# React build output (`cd frontend && npm run build`). Committed to git so the
+# server needs no Node. Checked per request, so a fresh build is picked up
+# without a restart; if it is missing, "/" falls back to templates/chat.html.
+FRONTEND_DIST = Path(__file__).resolve().parent / "frontend" / "dist"
+app.mount(
+    "/assets",
+    StaticFiles(directory=FRONTEND_DIST / "assets", check_dir=False),
+    name="frontend-assets",
+)
 
 
 def render_template(
@@ -64,9 +88,17 @@ def render_template(
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
-    """Serve the main chat interface."""
-    logger.debug("Serving main chat interface")
+async def index(request: Request) -> Response:
+    """Serve the React chat app, or the legacy Jinja page if no build exists."""
+    react_index = FRONTEND_DIST / "index.html"
+    if react_index.is_file():
+        logger.debug("Serving React chat interface")
+        return FileResponse(
+            react_index,
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache"},
+        )
+    logger.debug("React build missing; serving legacy chat template")
     return render_template(
         request,
         "chat.html",

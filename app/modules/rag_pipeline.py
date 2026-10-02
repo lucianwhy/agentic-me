@@ -275,8 +275,9 @@ class ChatRAGPipeline:
         Stream final answer tokens over SSE-friendly event dicts.
 
         Wire protocol (formatted as SSE in the API layer):
+          data: {"type":"status","stage":"retrieving"|"generating", ...}
           data: {"type":"token","content":"..."}
-          data: {"type":"done"}
+          data: {"type":"done","sources":[...]}
           data: {"type":"error","message":"..."}
 
         Practical RAG streaming path:
@@ -313,10 +314,18 @@ class ChatRAGPipeline:
                 human_appended = True
                 current_history = self.chat_history.copy()
 
-            # Step 1: retrieval (+ optional history rewrite) — blocking
+            # Step 1: retrieval (+ optional history rewrite) — blocking.
+            # "status" events are informational; clients that only know
+            # token/done/error simply ignore them.
+            yield {"type": "status", "stage": "retrieving"}
             docs = self.history_aware_retriever.invoke(
                 {"input": validated_query, "chat_history": current_history}
             )
+            yield {
+                "type": "status",
+                "stage": "generating",
+                "source_count": len(docs) if isinstance(docs, list) else 0,
+            }
 
             # Step 2: stream answer LLM only
             accumulated: list[str] = []

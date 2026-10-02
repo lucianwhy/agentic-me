@@ -48,3 +48,10 @@ Thumbs.db
 venv/
 
 mlruns/
+
+# Frontend (React + Vite)
+node_modules/
+frontend/.vite/
+# The Python patterns above (lib/, dist/) must not swallow the frontend:
+!frontend/src/lib/
+!frontend/dist/

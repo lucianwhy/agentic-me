@@ -21,7 +21,8 @@ def test_homepage_chinese_without_key():
     assert response.status_code == 200
     body = response.text
     assert "智能简历" in body or "对话" in body
-    assert "login-modal" in body
+    # React build (login dialog lives in the JS bundle) or the legacy Jinja fallback.
+    assert '<div id="root">' in body or "login-modal" in body
 
 
 def test_chat_returns_chinese_error_when_unconfigured():

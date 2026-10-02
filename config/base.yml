@@ -64,6 +64,8 @@ candidate:
   linkedin: ""
   github: "https://github.com/lucianwhy"
   scholar: ""
+  # 侧边栏技能徽章（可选，留空则不显示）
+  skills: ["RAG", "Agent", "LangGraph", "Spring AI", "FastAPI", "Python", "Java", "Docker"]
 
 # 默认公开访问：留空即可。需要邀请码时再填写。
 invite_codes: {}

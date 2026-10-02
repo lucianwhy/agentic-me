@@ -104,6 +104,24 @@ Docker 是可选方式：
 docker compose up --build
 ```
 
+## 前端（React + shadcn/ui）
+
+对话页位于 `frontend/`（Vite + React + TypeScript + Tailwind CSS + shadcn/ui）。构建产物 `frontend/dist/` **会提交到仓库**，FastAPI 直接在 `/` 提供它，因此服务器部署只需 `git pull`，无需 Node。若 `frontend/dist/` 不存在，`/` 会回退到旧的 `templates/chat.html`。
+
+需要 Node 22.18+（构建脚本直接运行 TypeScript）：
+
+```bash
+cd frontend
+npm install
+npm run dev       # http://localhost:5173 ，热更新；API 请求代理到 uvicorn :8000
+npm run build     # 检查架构图是否最新 + tsc + 输出到 frontend/dist（改完前端后提交 dist）
+npm run diagrams  # 修改 src/data/diagram-sources.ts 后运行：用本机 Chrome 预渲染 Mermaid 架构图
+```
+
+「我的项目」页的架构图在构建时预渲染为静态 SVG（`src/generated/diagrams.ts`，需提交），因此 dist 中不包含 mermaid。`npm run diagrams` 需要本机 Chrome/Chromium（找不到时设置 `CHROME_PATH`）；源文件改了却没重新生成时，`npm run build` 会直接报错提示。
+
+开发时先启动后端（`uvicorn main:app --reload --port 8000`），再运行 `npm run dev`。如需代理到其他地址，可设置 `VITE_BACKEND_URL`。候选人信息通过只读接口 `GET /api/profile` 提供，来源仍是 `config/base.yml`。
+
 ## 建立向量库
 
 配置好 API Key 并替换简历后，运行：
@@ -134,11 +152,15 @@ INVITE_CODES={"ACME": {"company": "某公司", "recruiter": "张三", "active": 
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/` | 个人卡片与对话页面 |
+| GET | `/` | 个人卡片与对话页面（React 构建产物；缺失时回退 Jinja 模板） |
+| GET | `/api/profile` | 前端使用的公开候选人信息（只读，无密钥） |
 | GET | `/health` | 健康检查，并返回 `llm_configured`、`vectorstore_ready` |
 | POST | `/chat` | RAG 对话 |
+| POST | `/chat/stream` | RAG 对话（SSE 流式） |
+| GET | `/models` | 可选模型及默认模型 |
 | POST | `/summary` | 生成中文摘要 |
 | POST | `/job-match` | 岗位匹配分析 |
+| POST | `/api/retrieve` | 检索演示：返回 Top-K 片段与余弦相似度（不调用 LLM，按 `rate_limit` 限流） |
 | GET | `/auth/status` | 公开模式下返回 `auth_enabled: false` |
 
 开发环境还提供 `/docs`。

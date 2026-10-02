@@ -1,0 +1,3 @@
+# Frontend dependencies are only needed to rebuild frontend/dist (which is committed).
+frontend/node_modules
+frontend/.vite

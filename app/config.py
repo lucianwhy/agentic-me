@@ -95,6 +95,8 @@ class CandidateConfig(BaseModel):
     linkedin: str = "https://linkedin.com/in/your-profile"
     github: str = "https://github.com/your-username"
     scholar: str = ""
+    # Optional short list of core skills shown as badges in the sidebar.
+    skills: list[str] = []
 
 
 class AppConfig(BaseSettings):

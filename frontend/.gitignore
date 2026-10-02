@@ -1,0 +1,17 @@
+# Dependencies / caches
+node_modules
+.vite
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# NOTE: dist/ is committed on purpose. FastAPI serves frontend/dist at "/",
+# so the server deploys with `git pull` and needs no Node.
