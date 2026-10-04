@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ChatPanel } from '@/components/ChatPanel'
+import { ChatPanel, type ChatPanelHandle } from '@/components/ChatPanel'
 import { JobMatchPanel } from '@/components/JobMatchPanel'
 import { LoginDialog } from '@/components/LoginDialog'
 import { ProfileSidebar } from '@/components/ProfileSidebar'
@@ -28,6 +28,13 @@ export default function App() {
   const [model, setModel] = useState<string>(() => readStoredModel() ?? '')
   const [models, setModels] = useState<ModelOption[] | null>(null)
   const [tab, setTab] = useState('chat')
+  const chatRef = useRef<ChatPanelHandle>(null)
+
+  // Resume entries / skills: switch to 对话 and put the question in the input — never auto-send.
+  const askAbout = useCallback((text: string) => {
+    setTab('chat')
+    chatRef.current?.prefill(text) // ChatPanel is always mounted (forceMount); it focuses after the tab shows
+  }, [])
 
   useEffect(() => {
     getProfile()
@@ -115,7 +122,7 @@ export default function App() {
       />
 
       <div className="mx-auto flex h-[100dvh] max-w-[1440px] flex-col lg:h-auto lg:min-h-screen lg:flex-row lg:items-start lg:gap-4 lg:p-4">
-        <ProfileSidebar profile={profile} />
+        <ProfileSidebar profile={profile} onAsk={askAbout} />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:p-0">
           {auth.enabled && auth.authenticated && (
@@ -142,6 +149,7 @@ export default function App() {
                 onModelChange={onModelChange}
                 ensureAuth={ensureAuth}
                 onAuthRequired={onAuthRequired}
+                ref={chatRef}
               />
             </TabsContent>
             <TabsContent value="summary" forceMount className={PANEL}>

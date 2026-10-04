@@ -67,6 +67,52 @@ candidate:
   # 侧边栏技能徽章（可选，留空则不显示）
   skills: ["RAG", "Agent", "LangGraph", "Spring AI", "FastAPI", "Python", "Java", "Docker"]
 
+# === 结构化简历（侧边栏「实习 / 项目 / 技能 / 教育」） ===
+# 只摘自 data/CV_王皓月.pdf 与 data/about_me.md，不得编造；每条 1–2 个可量化亮点。
+resume:
+  education:
+    - title: "数据科学与大数据专业 · 本科"
+      organization: "河南工业大学"
+      dates: "2024/09 – 至今"
+      highlights:
+        - "证书：CET-6"
+  internships:
+    - title: "全栈智能体开发"
+      organization: "讯飞聆智科技有限公司"
+      role: "实习生"
+      dates: "2026/06 – 至今"
+      highlights:
+        - "基于 SRS RTMP 流接入 Python/FastAPI 音视频分析服务，覆盖语音、表情、肢体动作、违禁词等 4 类分析维度，并构建自动评分规则"
+        - "规则召回 + BERT 分类微调 + 大模型兜底构建分层文本识别链路，降低大模型调用压力并提升识别效果"
+      tags: ["Spring AI", "FastAPI", "BERT", "Vue 3", "Spring Boot", "MySQL", "Redis", "WebSocket"]
+  projects:
+    - title: "个性化学习多智能体系统"
+      role: "智能体开发"
+      dates: "2026/03 – 2026/06"
+      highlights:
+        - "基于 FastAPI + LangGraph + SurrealDB 设计 7-Agent 编排体系，覆盖画像提取、路径规划、资源生成、答疑与反馈等核心环节"
+        - "工作流抽离为独立开源子仓库 final-review，获得 100+ GitHub Stars"
+      tags: ["FastAPI", "LangGraph", "SurrealDB", "向量检索", "RAG", "Docker Compose", "Next.js"]
+      link: "https://github.com/lucianwhy/final-review"
+      link_label: "final-review"
+    - title: "成绩雷达 - AI 学习分析助手"
+      role: "独立全栈开发"
+      dates: "2026/04"
+      highlights:
+        - "支持成绩录入、趋势分析、AI 成绩解读及个性化学习建议，产品上线累计 400+ 用户"
+        - "基于 CloudBase 构建 Serverless 后端，Node.js 云函数实现 AI 调用编排、用户鉴权、数据同步与调用额度控制"
+      tags: ["微信原生小程序", "JavaScript", "CloudBase", "Node.js 云函数", "CloudBase AI"]
+      link_label: "微信小程序搜：成绩雷达"
+  skills:
+    - name: "AI 应用开发"
+      items: ["RAG", "Agent", "LangGraph", "向量检索", "Spring AI", "多智能体编排"]
+    - name: "应用开发"
+      items: ["Python", "Java", "JavaScript", "FastAPI", "Spring Boot", "Vue3", "Node.js"]
+    - name: "知识库与数据工程"
+      items: ["MySQL", "Redis", "SurrealDB", "PostgreSQL", "MinIO"]
+    - name: "工程化"
+      items: ["Docker", "Docker Compose", "CloudBase"]
+
 # 默认公开访问：留空即可。需要邀请码时再填写。
 invite_codes: {}
 

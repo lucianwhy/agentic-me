@@ -1,11 +1,18 @@
 import type { Element, ElementContent, Root } from 'hast'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown, { type Components, type Options } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 
+import { CiteMarker, CiteSentence } from '@/components/Citations'
+import { rehypeCitations, stripPartialMarker } from '@/lib/citations'
 import { cn } from '@/lib/utils'
 
 /** Legacy answers sometimes contain literal "\n" sequences; turn them into real newlines. */
-const normalize = (raw: string) => String(raw ?? '').replace(/\\n/g, '\n')
+const normalize = (raw: string) =>
+  String(raw ?? '')
+    .replace(/\\n/g, '\n')
+    // "**标签：**正文": CommonMark won't close bold when full-width punctuation precedes the closing
+    // ** and a CJK character follows, so the asterisks would show. Move the punctuation outside.
+    .replace(/\*\*([^*\n]+?)([：:，,；;、])\*\*(?=\S)/g, '**$1**$2')
 
 /** rehype plugin: append a caret <span> right after the last text node (works inside nested lists, bold, etc.). */
 function rehypeCaret() {
@@ -24,6 +31,15 @@ function rehypeCaret() {
 }
 
 const components: Components = {
+  // Citation nodes produced by rehypeCitations (other spans/sups render as usual).
+  span: ({ node: _node, ...props }) => {
+    const cite = (props as Record<string, unknown>)['data-cite']
+    return cite !== undefined ? <CiteSentence cite={cite}>{props.children}</CiteSentence> : <span {...props} />
+  },
+  sup: ({ node: _node, ...props }) => {
+    const p = props as Record<string, unknown>
+    return p['data-cite-ref'] !== undefined ? <CiteMarker refNum={p['data-cite-ref']} sentence={p['data-sentence']} /> : <sup {...props} />
+  },
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
   ul: ({ children }) => <ul className="my-2 ml-5 list-disc space-y-1 marker:text-zinc-400 first:mt-0 last:mb-0">{children}</ul>,
   ol: ({ children }) => <ol className="my-2 ml-5 list-decimal space-y-1 marker:text-zinc-400 first:mt-0 last:mb-0">{children}</ol>,
@@ -56,15 +72,37 @@ const components: Components = {
   td: ({ children }) => <td className="border-b border-zinc-200 px-2 py-1 align-top">{children}</td>,
 }
 
+type Citations = {
+  /** Number of sources the markers may point at; null = not known yet (streaming). */
+  count: number | null
+}
+
 /**
  * Light markdown (headings, lists, bold, code, links, quotes) with single newlines kept as line breaks.
  * Raw HTML is not rendered. `streaming` shows a blinking caret after the last block.
+ * With `citations`, "sentence[1]" renders as an underlined sentence plus a superscript marker.
  */
-export function Markdown({ text, className, streaming = false }: { text: string; className?: string; streaming?: boolean }) {
+export function Markdown({
+  text,
+  className,
+  streaming = false,
+  citations,
+}: {
+  text: string
+  className?: string
+  streaming?: boolean
+  /** Enable inline [n] citation rendering (assistant answers). */
+  citations?: Citations
+}) {
+  let body = normalize(text)
+  if (citations && streaming) body = stripPartialMarker(body)
+  const rehypePlugins: NonNullable<Options['rehypePlugins']> = []
+  if (citations) rehypePlugins.push([rehypeCitations, { count: citations.count }])
+  if (streaming) rehypePlugins.push(rehypeCaret)
   return (
     <div className={cn('text-sm leading-7 break-words', streaming && 'md-streaming', className)}>
-      <ReactMarkdown remarkPlugins={[remarkBreaks]} rehypePlugins={streaming ? [rehypeCaret] : []} components={components}>
-        {normalize(text)}
+      <ReactMarkdown remarkPlugins={[remarkBreaks]} rehypePlugins={rehypePlugins} components={components}>
+        {body}
       </ReactMarkdown>
     </div>
   )

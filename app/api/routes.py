@@ -44,6 +44,7 @@ from app.modules.readiness import (
     is_llm_configured,
     is_vectorstore_ready,
 )
+from app.modules.resume_links import resume_entry_ids
 from app.modules.retrieval_demo import limiter as retrieval_limiter
 from app.modules.retrieval_demo import retrieve_with_scores
 from app.modules.summary_pipeline import get_auto_summary
@@ -83,14 +84,18 @@ def _extract_answer_text(result: dict) -> str:
 
 
 def _serialize_sources(sources) -> list:
-    """Make retrieval sources JSON-safe."""
+    """Make retrieval sources JSON-safe (content capped at 300 chars, plus resume_entry_ids)."""
     out: list = []
     for item in sources or []:
         if hasattr(item, "page_content"):
+            content = getattr(item, "page_content", None) or ""
+            metadata = dict(getattr(item, "metadata", None) or {})
             out.append(
                 {
-                    "content": (getattr(item, "page_content", None) or "")[:300],
-                    "metadata": dict(getattr(item, "metadata", None) or {}),
+                    "content": content[:300],
+                    "metadata": metadata,
+                    # Sidebar resume cards this chunk is about, from the FULL chunk text.
+                    "resume_entry_ids": resume_entry_ids(content, metadata),
                 }
             )
         elif isinstance(item, dict):

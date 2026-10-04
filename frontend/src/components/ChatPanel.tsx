@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type FormEvent, type KeyboardEvent, type Ref } from 'react'
 import { MessageSquare } from 'lucide-react'
 
 import { AssistantMessage, type AssistantMsg } from '@/components/AssistantMessage'
@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { AuthRequiredError, streamChat, type ChatTurn, type Profile } from '@/lib/api'
+import { stripCitations } from '@/lib/citations'
 import type { ModelOption } from '@/lib/models'
 
 type UserMsg = { id: number; role: 'user'; text: string }
@@ -24,6 +26,13 @@ type Props = {
   /** Returns false (and opens the login dialog) when auth is enabled and the visitor is not logged in. */
   ensureAuth: () => boolean
   onAuthRequired: () => void
+  /** Imperative handle so other parts of the page can prefill the input. */
+  ref?: Ref<ChatPanelHandle>
+}
+
+export type ChatPanelHandle = {
+  /** Put a question in the input (focused, cursor at end). Never sends — the visitor presses 发送. */
+  prefill: (text: string) => void
 }
 
 let nextId = 1
@@ -36,13 +45,13 @@ function buildHistory(messages: Message[]): ChatTurn[] {
     const q = messages[i]
     const a = messages[i + 1]
     if (q.role === 'user' && a.role === 'assistant' && a.phase === 'done' && a.sources !== undefined && a.text) {
-      turns.push({ role: 'user', content: q.text }, { role: 'assistant', content: a.text })
+      turns.push({ role: 'user', content: q.text }, { role: 'assistant', content: stripCitations(a.text) })
     }
   }
   return turns.slice(-HISTORY_TURNS)
 }
 
-export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, onAuthRequired }: Props) {
+export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, onAuthRequired, ref }: Props) {
   const { max_query_length: maxLen, rate_limit_ms: rateLimitMs } = profile.limits
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -58,6 +67,22 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
   const scrollRootRef = useRef<HTMLDivElement>(null)
   const rateTimerRef = useRef<number | undefined>(undefined)
   const formRef = useRef<HTMLFormElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  /** Fill the input with a question and focus it with the cursor at the end — does not send. */
+  const fillInput = useCallback((text: string) => {
+    setQuery(text)
+    // Wait a frame so the (possibly just re-shown) chat tab is visible and the value is committed.
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus({ preventScroll: true })
+      el.setSelectionRange(el.value.length, el.value.length)
+      el.scrollTop = el.scrollHeight
+    })
+  }, [])
+
+  useImperativeHandle(ref, () => ({ prefill: fillInput }), [fillInput])
 
   const isEmpty = messages.length === 0
 
@@ -199,24 +224,7 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
               <MessageSquare className="size-5" />
             </div>
             <p className="max-w-md text-sm text-zinc-500">{profile.welcome}</p>
-            <div className="flex max-w-xl flex-wrap justify-center gap-2">
-              {profile.suggested_questions.map((q) => (
-                <Button
-                  key={q.label}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full px-3 font-normal text-zinc-700"
-                  data-q={q.question}
-                  onClick={() => {
-                    setQuery(q.question)
-                    void send(q.question)
-                  }}
-                >
-                  {q.label}
-                </Button>
-              ))}
-            </div>
+            <SuggestedQuestions profile={profile} onPick={fillInput} />
           </div>
         </div>
       ) : (
@@ -232,7 +240,7 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
                   <Markdown text={m.text} className="[&_strong]:text-zinc-50 [&_a]:text-zinc-50" />
                 </div>
               ) : (
-                <AssistantMessage key={m.id} msg={m} avatarUrl={profile.avatar_url} name={profile.name} />
+                <AssistantMessage key={m.id} msg={m} avatarUrl={profile.avatar_url} name={profile.name} resume={profile.resume} />
               ),
             )}
           </div>
@@ -245,6 +253,7 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
           <div className="rounded-xl border border-zinc-200 bg-white shadow-sm transition focus-within:border-zinc-400 focus-within:ring-2 focus-within:ring-zinc-950/10">
             <Textarea
               id="chat-query"
+              ref={inputRef}
               rows={2}
               value={query}
               maxLength={maxLen}
@@ -281,5 +290,37 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
         )}
       </div>
     </Card>
+  )
+}
+
+const CHIP = 'h-auto min-h-8 rounded-full px-3 py-1.5 text-left font-normal whitespace-normal text-zinc-700'
+
+/** Empty-chat suggestions: category tabs when the backend sends groups, flat chips otherwise. Clicking fills the input. */
+function SuggestedQuestions({ profile, onPick }: { profile: Profile; onPick: (q: string) => void }) {
+  const groups = profile.suggested_question_groups ?? []
+  const chip = (q: { label: string; question: string }) => (
+    <Button key={q.label} type="button" variant="outline" size="sm" className={CHIP} data-q={q.question} title={q.question} onClick={() => onPick(q.question)}>
+      {q.label}
+    </Button>
+  )
+  if (!groups.length) {
+    return <div className="flex max-w-xl flex-wrap justify-center gap-2">{profile.suggested_questions.map(chip)}</div>
+  }
+  return (
+    <Tabs defaultValue={groups[0].id} className="w-full max-w-xl items-center gap-3" data-question-groups>
+      <TabsList aria-label="推荐问题分类">
+        {groups.map((g) => (
+          <TabsTrigger key={g.id} value={g.id} className="px-3 text-[13px]">
+            {g.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {groups.map((g) => (
+        <TabsContent key={g.id} value={g.id} className="mt-0 flex min-h-[5.5rem] flex-wrap content-start justify-center gap-2">
+          {g.questions.map(chip)}
+        </TabsContent>
+      ))}
+      <p className="text-xs text-zinc-400">点击问题会填入输入框，可修改后再发送</p>
+    </Tabs>
   )
 }

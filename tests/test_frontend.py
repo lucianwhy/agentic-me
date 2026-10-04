@@ -129,3 +129,44 @@ class TestDataExposure:
     )
     def test_everything_else_404(self, path):
         assert client.get(path).status_code == 404
+
+
+class TestResumeSections:
+    """Structured sidebar entries come from config.resume, each with a preset 问 AI question."""
+
+    def test_resume_sections_present(self):
+        resume = client.get("/api/profile").json()["resume"]
+        assert set(resume) == {"education", "internships", "projects", "skills"}
+        for kind in ("education", "internships", "projects"):
+            assert len(resume[kind]) == len(getattr(config.resume, kind))
+            for entry in resume[kind]:
+                assert entry["title"] and entry["ask"]
+                assert entry["title"] in entry["ask"] or entry["organization"] in entry["ask"]
+        for group in resume["skills"]:
+            for item in group["items"]:
+                assert item["name"] in item["ask"]
+
+    def test_resume_matches_config(self):
+        resume = client.get("/api/profile").json()["resume"]
+        if config.resume.internships:
+            first = config.resume.internships[0]
+            assert resume["internships"][0]["organization"] == first.organization
+            assert resume["internships"][0]["highlights"] == first.highlights
+
+    def test_resume_optional(self, monkeypatch):
+        from app.config import ResumeConfig
+
+        monkeypatch.setattr(config, "resume", ResumeConfig())
+        resume = client.get("/api/profile").json()["resume"]
+        assert resume == {"education": [], "internships": [], "projects": [], "skills": []}
+
+    def test_question_groups(self):
+        groups = client.get("/api/profile").json()["suggested_question_groups"]
+        assert [g["label"] for g in groups] == ["实习", "项目", "技术深度", "为什么选我"]
+        assert all(g["questions"] and all(q["label"] and q["question"] for q in g["questions"]) for g in groups)
+
+
+def test_resume_entries_carry_ids():
+    resume = client.get("/api/profile").json()["resume"]
+    for kind in ("education", "internships", "projects"):
+        assert [e["id"] for e in resume[kind]] == [f"{kind}-{i}" for i in range(len(resume[kind]))]

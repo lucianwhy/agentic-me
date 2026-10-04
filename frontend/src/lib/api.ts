@@ -9,6 +9,33 @@ export type Contact = {
 
 export type SuggestedQuestion = { label: string; question: string }
 
+/** Empty-chat suggestions grouped into category tabs (实习 / 项目 / 技术深度 / 为什么选我). */
+export type SuggestedQuestionGroup = { id: string; label: string; questions: SuggestedQuestion[] }
+
+/** One structured resume entry (copied from the CV); `ask` is the preset 问 AI question. */
+export type ResumeEntry = {
+  /** Stable card id ("projects-0"); matches Source.resume_entry_ids. Optional on older backends. */
+  id?: string
+  title: string
+  organization: string
+  role: string
+  dates: string
+  highlights: string[]
+  tags: string[]
+  link: string
+  link_label: string
+  ask: string
+}
+
+export type ResumeSkillGroup = { name: string; items: { name: string; ask: string }[] }
+
+export type Resume = {
+  education: ResumeEntry[]
+  internships: ResumeEntry[]
+  projects: ResumeEntry[]
+  skills: ResumeSkillGroup[]
+}
+
 export type Profile = {
   name: string
   headline: string
@@ -22,6 +49,9 @@ export type Profile = {
   welcome: string
   input_placeholder: string
   suggested_questions: SuggestedQuestion[]
+  /** Optional on older backends. */
+  suggested_question_groups?: SuggestedQuestionGroup[]
+  resume?: Resume
   skills: string[]
   limits: {
     max_query_length: number
@@ -131,7 +161,12 @@ export async function analyzeJobMatch(text: string): Promise<{ analysis?: string
 }
 
 /** One retrieved chunk as sent in the final `done` event (content is capped at 300 chars server-side). */
-export type Source = { content?: string; metadata?: Record<string, unknown> }
+export type Source = {
+  content?: string
+  metadata?: Record<string, unknown>
+  /** Sidebar cards this chunk is about (computed server-side from the full chunk). Absent on older backends. */
+  resume_entry_ids?: string[]
+}
 
 export type StreamStage = 'retrieving' | 'generating'
 

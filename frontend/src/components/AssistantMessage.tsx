@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import { Check, ChevronRight, Copy, FileText } from 'lucide-react'
 
 import { Markdown } from '@/components/Markdown'
@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { Source } from '@/lib/api'
+import type { Resume, Source } from '@/lib/api'
+import { CitationContext, type CitationContextValue } from '@/lib/citation-context'
+import { flash, flashResumeEntry, matchResumeEntry, scrollIntoNearest, snippet, sourceName, stripCitations } from '@/lib/citations'
 import { cn } from '@/lib/utils'
 
 /** waiting → (retrieving|generating) → streaming → done | error */
@@ -111,29 +113,18 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function sourceName(s: Source) {
-  const m = s.metadata ?? {}
-  const src = String(m.source ?? '')
-  if (src === 'cv') {
-    const page = m.page_label ?? (typeof m.page === 'number' ? m.page + 1 : undefined)
-    return page ? `简历 PDF · 第 ${page} 页` : '简历 PDF'
-  }
-  if (src === 'about_me') return '关于我'
-  return src || '资料'
+type SourcesProps = {
+  sources: Source[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** 1-based numbers of the chunks the visitor just jumped to (shown unclamped). */
+  active: number[]
+  listRef: Ref<HTMLOListElement>
 }
 
-/** Plain-text preview: drop markdown markers so "## 项目 ###" reads cleanly. */
-const snippet = (text: string) =>
-  text
-    .replace(/[#*`>|]+/g, ' ')
-    .replace(/^\s*-\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-function Sources({ sources }: { sources: Source[] }) {
-  const [open, setOpen] = useState(false)
+function Sources({ sources, open, onOpenChange, active, listRef }: SourcesProps) {
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="min-w-0 flex-1 text-xs">
+    <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0 flex-1 text-xs">
       <CollapsibleTrigger asChild>
         <Button type="button" variant="ghost" size="xs" className="text-zinc-500 hover:text-zinc-900" data-sources-toggle>
           <ChevronRight className={cn('transition-transform', open && 'rotate-90')} />
@@ -141,28 +132,89 @@ function Sources({ sources }: { sources: Source[] }) {
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ol className="mt-1.5 space-y-1.5" data-sources-list>
-          {sources.map((s, i) => (
-            <li key={i} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
-              <div className="flex items-center gap-1.5 font-medium text-zinc-700">
-                <FileText className="size-3.5 text-zinc-400" aria-hidden="true" />
-                {sourceName(s)}
-              </div>
-              {s.content && (
-                <p className="mt-1 line-clamp-2 leading-relaxed text-zinc-500">{snippet(s.content)}</p>
-              )}
-            </li>
-          ))}
+        <ol ref={listRef} className="mt-1.5 space-y-1.5" data-sources-list>
+          {sources.map((s, i) => {
+            const isActive = active.includes(i + 1)
+            return (
+              <li
+                key={i}
+                data-source-index={i + 1}
+                data-resume-ids={s.resume_entry_ids?.join(',')}
+                className={cn('rounded-lg border bg-white px-3 py-2 transition-colors', isActive ? 'border-zinc-400' : 'border-zinc-200')}
+              >
+                <div className="flex items-center gap-1.5 font-medium text-zinc-700">
+                  <span className="rounded bg-zinc-100 px-1 text-[10px] leading-4 font-semibold text-zinc-600 tabular-nums ring-1 ring-zinc-200">
+                    {i + 1}
+                  </span>
+                  <FileText className="size-3.5 text-zinc-400" aria-hidden="true" />
+                  {sourceName(s)}
+                </div>
+                {s.content && (
+                  <p className={cn('mt-1 leading-relaxed text-zinc-500', !isActive && 'line-clamp-2')}>{snippet(s.content)}</p>
+                )}
+              </li>
+            )
+          })}
         </ol>
       </CollapsibleContent>
     </Collapsible>
   )
 }
 
-export function AssistantMessage({ msg, avatarUrl, name }: { msg: AssistantMsg; avatarUrl: string; name: string }) {
+type Props = {
+  msg: AssistantMsg
+  avatarUrl: string
+  name: string
+  /** Sidebar resume entries; a cited chunk that is about one of them highlights it too. */
+  resume?: Resume
+}
+
+export function AssistantMessage({ msg, avatarUrl, name, resume }: Props) {
   const waiting = msg.phase === 'retrieving' || msg.phase === 'generating'
   const elapsed = useElapsed(waiting, msg.startedAt)
   const finished = msg.phase === 'done' && !!msg.text
+
+  const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [jump, setJump] = useState<{ nums: number[]; at: number } | null>(null)
+  const listRef = useRef<HTMLOListElement>(null)
+  const sources = msg.sources
+  // Until the done event the server has only told us how many chunks it found (status event).
+  const citeCount = sources ? sources.length : (msg.sourceCount ?? null)
+
+  const activate = useCallback(
+    (nums: number[], sentence: string) => {
+      if (!sources?.length) return
+      setSourcesOpen(true)
+      setJump({ nums, at: Date.now() })
+      for (const n of nums) {
+        const src = sources[n - 1]
+        const id = matchResumeEntry(resume, src?.content ?? '', sentence, src?.resume_entry_ids)
+        if (id) {
+          flashResumeEntry(id)
+          break
+        }
+      }
+    },
+    [sources, resume],
+  )
+
+  // After the panel has opened, bring the first cited chunk into view and flash every cited one.
+  useEffect(() => {
+    if (!jump) return
+    const raf = requestAnimationFrame(() => {
+      const items = jump.nums
+        .map((n) => listRef.current?.querySelector<HTMLElement>(`[data-source-index="${n}"]`))
+        .filter((el): el is HTMLElement => !!el)
+      if (items[0]) scrollIntoNearest(items[0])
+      items.forEach(flash)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [jump])
+
+  const citeCtx = useMemo<CitationContextValue>(
+    () => ({ ready: msg.phase === 'done' && !!sources?.length, sources: sources ?? [], activate }),
+    [msg.phase, sources, activate],
+  )
 
   return (
     <div className="flex max-w-[95%] items-start gap-2.5 md:max-w-[88%]" data-role="assistant" data-phase={msg.phase}>
@@ -193,13 +245,17 @@ export function AssistantMessage({ msg, avatarUrl, name }: { msg: AssistantMsg; 
           ) : msg.phase === 'error' ? (
             <p className="text-sm text-red-600">{msg.text}</p>
           ) : (
-            <Markdown text={msg.text} streaming={msg.phase === 'streaming'} />
+            <CitationContext value={citeCtx}>
+              <Markdown text={msg.text} streaming={msg.phase === 'streaming'} citations={{ count: citeCount }} />
+            </CitationContext>
           )}
         </div>
         {finished && (
           <div className="mt-1 flex flex-wrap items-start gap-1">
-            <CopyButton text={msg.text} />
-            {msg.sources && msg.sources.length > 0 && <Sources sources={msg.sources} />}
+            <CopyButton text={stripCitations(msg.text)} />
+            {sources && sources.length > 0 && (
+              <Sources sources={sources} open={sourcesOpen} onOpenChange={setSourcesOpen} active={jump?.nums ?? []} listRef={listRef} />
+            )}
           </div>
         )}
       </div>

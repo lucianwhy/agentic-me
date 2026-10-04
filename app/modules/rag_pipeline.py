@@ -10,8 +10,9 @@ from collections.abc import Iterator
 from typing import Any
 
 from dotenv import load_dotenv
+from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
 
 from app.config import config
 from app.model_registry import get_model_registry
@@ -42,6 +43,44 @@ except ImportError:
 
 
 load_dotenv()
+
+
+# Inline citations: context chunks are numbered [1]..[n] in the order they are retrieved,
+# which is also the order of `sources` in the /chat done event, so the frontend can map
+# a marker [n] to sources[n-1]. Kept free of braces (it is part of a prompt template).
+CITATION_INSTRUCTIONS = """
+
+引用规则（资料已按 [1]、[2]… 编号）：
+- 只给具体的事实陈述标注来源：经历、职责、做法、数据与成果。编号写在句末标点之前，例如：设计了 7-Agent 编排体系[2]。
+- 用能直接支撑该句的最少资料：通常只标 1 个编号，最多 2 个；拿不准是否支撑就不标。
+- 以下内容一律不标编号：说明资料缺失或不确定的句子（如「简历里没有写到…」「未说明…」「资料不足」）；标题、小标题、只有标签的行；只是罗列名词的清单行（如「技术栈：A、B、C」）；开场、过渡、总结和评价性的句子；问句。
+- 一句话里既有事实又有「没有写到」时，拆成两句，只给事实那句标注。
+- 正确：负责模拟直播评分链路，覆盖 4 类分析维度[1]。简历里没有写到评分准确率。
+- 错误：简历里没有写到团队人数[2]。／技术栈：FastAPI、LangGraph[1][2][4]。／总体来看，他工程能力扎实[1]。
+- 不要在文末另列参考文献，也不要提及「资料编号」或「检索」，保持回答自然。"""
+
+CITATION_DOCUMENT_PROMPT = PromptTemplate.from_template("[{cite}] {page_content}")
+
+
+def number_documents(docs: list[Any]) -> list[Document]:
+    """Copies of the retrieved docs tagged with their 1-based citation number (metadata 'cite').
+
+    The originals are left untouched; they are what the done event serializes as sources.
+    """
+    numbered: list[Document] = []
+    for i, doc in enumerate(docs or [], start=1):
+        content = getattr(doc, "page_content", None)
+        if content is None:
+            content = str(doc)
+        metadata = dict(getattr(doc, "metadata", None) or {})
+        metadata["cite"] = i
+        numbered.append(Document(page_content=content, metadata=metadata))
+    return numbered
+
+
+def build_chat_system_prompt(template: str, candidate_name: str) -> str:
+    """The configured chat system prompt plus the inline-citation rules."""
+    return template.format(candidate_name=candidate_name).rstrip() + CITATION_INSTRUCTIONS
 
 
 def history_to_messages(
@@ -135,8 +174,8 @@ class ChatRAGPipeline:
             language_model = self.model_provider.get_language_model(
                 model=name, reasoning_effort=effort
             )
-            system_prompt = self.config.chat_system_prompt.format(
-                candidate_name=self.config.candidate.name
+            system_prompt = build_chat_system_prompt(
+                self.config.chat_system_prompt, self.config.candidate.name
             )
             # Recent turns go to the answer model, which resolves follow-ups itself.
             response_prompt = ChatPromptTemplate.from_messages(
@@ -146,7 +185,11 @@ class ChatRAGPipeline:
                     ("human", "{input}"),
                 ]
             )
-            chain = create_stuff_documents_chain(language_model, response_prompt)
+            chain = create_stuff_documents_chain(
+                language_model,
+                response_prompt,
+                document_prompt=CITATION_DOCUMENT_PROMPT,
+            )
             self._document_chains[key] = chain
             return chain
 
@@ -191,7 +234,7 @@ class ChatRAGPipeline:
             messages = self._history(history)
             docs = self._retrieve(validated_query)
             answer = document_chain.invoke(
-                {"input": validated_query, "chat_history": messages, "context": docs}
+                {"input": validated_query, "chat_history": messages, "context": number_documents(docs)}
             )
             text = answer if isinstance(answer, str) else str(answer)
             text = self.query_validator.validate_response_output(text)
@@ -261,7 +304,7 @@ class ChatRAGPipeline:
 
             accumulated: list[str] = []
             for chunk in document_chain.stream(
-                {"input": validated_query, "chat_history": messages, "context": docs}
+                {"input": validated_query, "chat_history": messages, "context": number_documents(docs)}
             ):
                 if chunk is None:
                     continue
@@ -297,6 +340,12 @@ class ChatRAGPipeline:
         embeddings = self.model_provider.get_embedding_model()
         if hasattr(embeddings, "warmup"):
             embeddings.warmup()
+        try:  # parse CV / about_me once so mapping sources to resume cards is instant
+            from app.modules.resume_links import source_documents
+
+            source_documents()
+        except Exception as exc:  # best effort
+            rag_logger.info(f"Resume link warm-up skipped: {type(exc).__name__}")
         base_url = (self.config.resolved_base_url() or "").rstrip("/")
         api_key = self.config.resolved_api_key()
         if base_url and api_key:

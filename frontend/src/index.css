@@ -194,3 +194,54 @@
     height: auto;
   }
 }
+
+/* Inline citations in chat answers. */
+.cite-sentence {
+    cursor: pointer;
+    border-radius: 2px;
+    text-decoration-line: underline;
+    text-decoration-style: dashed;
+    text-decoration-color: var(--color-zinc-400);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    transition: background-color 120ms, text-decoration-color 120ms;
+}
+.cite-sentence:hover,
+.cite-sentence:focus-visible {
+    background-color: rgb(24 24 27 / 0.05);
+    text-decoration-color: var(--color-zinc-900);
+    outline: none;
+}
+.cite-marker {
+    margin-left: 1px;
+    font-size: 0.72em;
+    font-weight: 600;
+    line-height: 0;
+    font-variant-numeric: tabular-nums;
+    vertical-align: super;
+}
+.cite-markers {
+    white-space: nowrap;
+}
+.cite-marker + .cite-marker {
+    margin-left: 0;
+}
+.cite-marker > button {
+    display: inline-block;
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 1px 1.5px;
+    line-height: 1.1;
+    color: var(--color-zinc-600);
+    transition: color 120ms, background-color 120ms;
+}
+.cite-marker > button:hover,
+.cite-marker > button:focus-visible,
+.cite-marker > button[data-state='open'] {
+    color: var(--color-zinc-950);
+    background-color: rgb(24 24 27 / 0.08);
+    outline: none;
+}
+.cite-pending {
+    color: var(--color-zinc-400);
+}

@@ -115,6 +115,38 @@ class CandidateConfig(BaseModel):
     skills: list[str] = []
 
 
+class ResumeEntry(BaseModel):
+    """One structured resume entry (education / internship / project) shown in the sidebar.
+
+    Content must be copied from the CV PDF or about_me.md; nothing is invented.
+    """
+
+    title: str
+    organization: str = ""
+    role: str = ""
+    dates: str = ""
+    highlights: list[str] = []
+    tags: list[str] = []
+    link: str = ""
+    link_label: str = ""
+
+
+class SkillGroup(BaseModel):
+    """A named group of skills (e.g. "AI 应用开发")."""
+
+    name: str
+    items: list[str] = []
+
+
+class ResumeConfig(BaseModel):
+    """Structured resume sections for the sidebar (GET /api/profile -> resume)."""
+
+    education: list[ResumeEntry] = []
+    internships: list[ResumeEntry] = []
+    projects: list[ResumeEntry] = []
+    skills: list[SkillGroup] = []
+
+
 class AppConfig(BaseSettings):
     """
     Main application configuration class that aggregates all sub-configurations.
@@ -156,6 +188,7 @@ class AppConfig(BaseSettings):
     logging: LoggingConfig = LoggingConfig()
     data: DataPaths = DataPaths()
     candidate: CandidateConfig = CandidateConfig()
+    resume: ResumeConfig = ResumeConfig()
     invite_codes: dict[str, Any] = {}
 
     invite_codes_env: str | None = Field(default=None, alias="INVITE_CODES")
