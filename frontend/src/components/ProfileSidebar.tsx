@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import type { Profile } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { IcpFooter } from '@/components/IcpFooter'
 
 const EXTERNAL = new Set(['github', 'linkedin', 'scholar'])
 
@@ -91,6 +92,8 @@ export function ProfileSidebar({ profile, onAsk }: Props) {
             <p className="mt-5 text-[11px] leading-relaxed text-zinc-400">{profile.disclaimer}</p>
           </div>
         </div>
+        {/* Desktop: pinned to the bottom of the left column. Mobile renders it at the page bottom (App). */}
+        <IcpFooter className="hidden border-t border-zinc-100 py-2.5 lg:block" />
       </div>
     </aside>
   )

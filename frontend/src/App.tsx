@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ChatPanel, type ChatPanelHandle } from '@/components/ChatPanel'
+import { IcpFooter } from '@/components/IcpFooter'
 import { JobMatchPanel } from '@/components/JobMatchPanel'
 import { LoginDialog } from '@/components/LoginDialog'
 import { ProfileSidebar } from '@/components/ProfileSidebar'
@@ -163,6 +164,7 @@ export default function App() {
             </TabsContent>
           </Tabs>
         </main>
+        <IcpFooter className="pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden" />
       </div>
     </TooltipProvider>
   )
