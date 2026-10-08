@@ -19,7 +19,7 @@ from app.modules.model_provider import ModelProvider
 from app.modules.vectorstore_provider import VectorStoreManager
 from app.utils.logging_config import rag_logger
 
-SOURCE_LABELS = {"cv": "简历 PDF", "about_me": "关于我"}
+SOURCE_LABELS = {"cv": "简历 PDF", "about_me": "关于我", "tool": "工具"}
 MAX_CHUNK_CHARS = 1200
 
 
@@ -95,7 +95,11 @@ def retrieve_with_scores(query: str) -> dict[str, Any]:
             {
                 "rank": i + 1,
                 "source": source,
-                "source_label": SOURCE_LABELS.get(source, source or "资料"),
+                "source_label": (
+                    f"工具 · {meta.get('title')}"
+                    if source == "tool" and meta.get("title")
+                    else SOURCE_LABELS.get(source, source or "资料")
+                ),
                 "page": (int(page) + 1) if isinstance(page, int) else None,
                 "content": (text or "")[:MAX_CHUNK_CHARS],
                 "chars": len(text or ""),

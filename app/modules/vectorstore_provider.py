@@ -15,6 +15,7 @@ from app.modules.readiness import (
     VectorStoreNotReady,
     is_vectorstore_ready,
 )
+from app.modules.tools import load_tool_chunks
 
 
 class VectorStoreManager:
@@ -34,7 +35,7 @@ class VectorStoreManager:
         """
         Initialize and populate the vector database with resume documents.
 
-        Loads CV and About Me documents, splits them into chunks, and creates a vector database.
+        Loads CV, About Me and tool write-ups (data/tools), splits them into chunks, and creates a vector database.
         """
         self.logger.info("Setting up vectorstore with document ingestion")
 
@@ -61,7 +62,7 @@ class VectorStoreManager:
         all_documents = cv_documents + about_documents
         self.logger.info(f"Total documents before splitting: {len(all_documents)}")
 
-        if not all_documents:
+        if not all_documents and not load_tool_chunks():
             raise VectorStoreNotReady(
                 "没有可入库的文档。请将简历 PDF 放到 data/ 并完善 data/about_me.md。"
             )
@@ -72,6 +73,10 @@ class VectorStoreManager:
             chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
         document_chunks = text_splitter.split_documents(all_documents)
+        # Tool write-ups (data/tools/*.md): one chunk per section, prefixed with the tool name.
+        tool_chunks = load_tool_chunks(chunk_size, chunk_overlap)
+        self.logger.info(f"Loaded {len(tool_chunks)} tool chunks from {self.config.data.tools_dir}")
+        document_chunks += tool_chunks
         self.logger.info(
             f"Total document chunks after splitting: {len(document_chunks)}"
         )

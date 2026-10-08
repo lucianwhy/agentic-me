@@ -26,6 +26,8 @@ type Props = {
   /** Returns false (and opens the login dialog) when auth is enabled and the visitor is not logged in. */
   ensureAuth: () => boolean
   onAuthRequired: () => void
+  /** 「在工具页查看」 on a source from a tool write-up. */
+  onOpenTool?: (id: string) => void
   /** Imperative handle so other parts of the page can prefill the input. */
   ref?: Ref<ChatPanelHandle>
 }
@@ -51,7 +53,7 @@ function buildHistory(messages: Message[]): ChatTurn[] {
   return turns.slice(-HISTORY_TURNS)
 }
 
-export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, onAuthRequired, ref }: Props) {
+export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, onAuthRequired, onOpenTool, ref }: Props) {
   const { max_query_length: maxLen, rate_limit_ms: rateLimitMs } = profile.limits
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -210,7 +212,7 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="text-base font-semibold tracking-tight">对话</h2>
-          <Badge variant="outline" className="rounded-md text-zinc-600">仅基于简历回答</Badge>
+          <Badge variant="outline" className="rounded-md text-zinc-600">仅基于简历与工具介绍回答</Badge>
         </div>
         <Button type="button" variant="ghost" size="sm" className="text-zinc-500" onClick={clear}>
           清空记录
@@ -240,7 +242,7 @@ export function ChatPanel({ profile, model, models, onModelChange, ensureAuth, o
                   <Markdown text={m.text} className="[&_strong]:text-zinc-50 [&_a]:text-zinc-50" />
                 </div>
               ) : (
-                <AssistantMessage key={m.id} msg={m} avatarUrl={profile.avatar_url} name={profile.name} resume={profile.resume} />
+                <AssistantMessage key={m.id} msg={m} avatarUrl={profile.avatar_url} name={profile.name} resume={profile.resume} onOpenTool={onOpenTool} />
               ),
             )}
           </div>

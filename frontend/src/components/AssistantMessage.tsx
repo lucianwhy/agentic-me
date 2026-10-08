@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react'
-import { Check, ChevronRight, Copy, FileText } from 'lucide-react'
+import { ArrowUpRight, Blocks, Check, ChevronRight, Copy, FileText } from 'lucide-react'
 
 import { Markdown } from '@/components/Markdown'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Resume, Source } from '@/lib/api'
 import { CitationContext, type CitationContextValue } from '@/lib/citation-context'
-import { flash, flashResumeEntry, matchResumeEntry, scrollIntoNearest, snippet, sourceName, stripCitations } from '@/lib/citations'
+import { flash, flashResumeEntry, flashToolEntry, matchResumeEntry, scrollIntoNearest, snippet, sourceName, stripCitations } from '@/lib/citations'
 import { cn } from '@/lib/utils'
 
 /** waiting → (retrieving|generating) → streaming → done | error */
@@ -120,9 +120,10 @@ type SourcesProps = {
   /** 1-based numbers of the chunks the visitor just jumped to (shown unclamped). */
   active: number[]
   listRef: Ref<HTMLOListElement>
+  onOpenTool?: (id: string) => void
 }
 
-function Sources({ sources, open, onOpenChange, active, listRef }: SourcesProps) {
+function Sources({ sources, open, onOpenChange, active, listRef, onOpenTool }: SourcesProps) {
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0 flex-1 text-xs">
       <CollapsibleTrigger asChild>
@@ -135,19 +136,33 @@ function Sources({ sources, open, onOpenChange, active, listRef }: SourcesProps)
         <ol ref={listRef} className="mt-1.5 space-y-1.5" data-sources-list>
           {sources.map((s, i) => {
             const isActive = active.includes(i + 1)
+            const toolId = s.tool_ids?.[0]
+            const SourceIcon = s.metadata?.source === 'tool' ? Blocks : FileText
             return (
               <li
                 key={i}
                 data-source-index={i + 1}
                 data-resume-ids={s.resume_entry_ids?.join(',')}
+                data-tool-ids={s.tool_ids?.join(',') || undefined}
                 className={cn('rounded-lg border bg-white px-3 py-2 transition-colors', isActive ? 'border-zinc-400' : 'border-zinc-200')}
               >
                 <div className="flex items-center gap-1.5 font-medium text-zinc-700">
                   <span className="rounded bg-zinc-100 px-1 text-[10px] leading-4 font-semibold text-zinc-600 tabular-nums ring-1 ring-zinc-200">
                     {i + 1}
                   </span>
-                  <FileText className="size-3.5 text-zinc-400" aria-hidden="true" />
-                  {sourceName(s)}
+                  <SourceIcon className="size-3.5 text-zinc-400" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{sourceName(s)}</span>
+                  {toolId && onOpenTool && (
+                    <button
+                      type="button"
+                      data-open-tool={toolId}
+                      onClick={() => onOpenTool(toolId)}
+                      className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[11px] font-normal text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline"
+                    >
+                      在工具页查看
+                      <ArrowUpRight className="size-3" aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
                 {s.content && (
                   <p className={cn('mt-1 leading-relaxed text-zinc-500', !isActive && 'line-clamp-2')}>{snippet(s.content)}</p>
@@ -167,9 +182,11 @@ type Props = {
   name: string
   /** Sidebar resume entries; a cited chunk that is about one of them highlights it too. */
   resume?: Resume
+  /** Open a tool's detail in the 工具 tab (「在工具页查看」 on tool sources). */
+  onOpenTool?: (id: string) => void
 }
 
-export function AssistantMessage({ msg, avatarUrl, name, resume }: Props) {
+export function AssistantMessage({ msg, avatarUrl, name, resume, onOpenTool }: Props) {
   const waiting = msg.phase === 'retrieving' || msg.phase === 'generating'
   const elapsed = useElapsed(waiting, msg.startedAt)
   const finished = msg.phase === 'done' && !!msg.text
@@ -186,6 +203,7 @@ export function AssistantMessage({ msg, avatarUrl, name, resume }: Props) {
       if (!sources?.length) return
       setSourcesOpen(true)
       setJump({ nums, at: Date.now() })
+      // Highlight the first sidebar card the cited chunks point at: a resume entry, else a 工具 row.
       for (const n of nums) {
         const src = sources[n - 1]
         const id = matchResumeEntry(resume, src?.content ?? '', sentence, src?.resume_entry_ids)
@@ -193,6 +211,8 @@ export function AssistantMessage({ msg, avatarUrl, name, resume }: Props) {
           flashResumeEntry(id)
           break
         }
+        const toolId = src?.tool_ids?.[0]
+        if (toolId && flashToolEntry(toolId)) break
       }
     },
     [sources, resume],
@@ -254,7 +274,7 @@ export function AssistantMessage({ msg, avatarUrl, name, resume }: Props) {
           <div className="mt-1 flex flex-wrap items-start gap-1">
             <CopyButton text={stripCitations(msg.text)} />
             {sources && sources.length > 0 && (
-              <Sources sources={sources} open={sourcesOpen} onOpenChange={setSourcesOpen} active={jump?.nums ?? []} listRef={listRef} />
+              <Sources sources={sources} open={sourcesOpen} onOpenChange={setSourcesOpen} active={jump?.nums ?? []} listRef={listRef} onOpenTool={onOpenTool} />
             )}
           </div>
         )}

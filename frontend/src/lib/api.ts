@@ -166,6 +166,8 @@ export type Source = {
   metadata?: Record<string, unknown>
   /** Sidebar cards this chunk is about (computed server-side from the full chunk). Absent on older backends. */
   resume_entry_ids?: string[]
+  /** Sidebar 工具 rows (data/tools/<id>.md chunks, or chunks naming a tool). Absent on older backends. */
+  tool_ids?: string[]
 }
 
 export type StreamStage = 'retrieving' | 'generating'

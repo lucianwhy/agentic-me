@@ -69,6 +69,7 @@ LLM_MODEL=deepseek-chat
 
 1. 把 PDF 放到 `data/`，例如替换 `data/CV_Demo.pdf`，或改 `config/base.yml` 里的 `data.cv_path`。
 2. 按章节填写 `data/about_me.md`（简介 / 经历 / 项目 / 技能 / FAQ）。
+   - 可选：在 `data/tools/` 放工具介绍（Markdown + front matter：`id` / `title` / `aliases`），按 `##` 章节切块入库，回答引用时会高亮左栏「工具」；`id` 要和 `frontend/src/data/tools.ts` 一致。这些文件不会通过 `/data` 对外提供。
 3. 改 `config/base.yml` 的 `candidate`：姓名、一句话介绍、邮箱、LinkedIn、GitHub。
 4. 替换 `static/default-avatar.png` 为头像。
 5. 配置好 API Key 后构建向量库：

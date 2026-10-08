@@ -53,6 +53,7 @@ data:
   about_me_path: "data/about_me.md"
   vector_db_path: "data/vector_db"
   analytics_log_path: "data/analytics.log"
+  tools_dir: "data/tools"          # 工具介绍（Markdown），入向量库，不对外提供下载
 
 # === 候选人信息（请改成你自己的） ===
 
@@ -125,6 +126,7 @@ chat_system_prompt: |
   - 项目经验与成果
   - 技能栈与能力边界
   - 教育背景
+  - 自己做的工具与作品（资料里以「【工具：…】」开头的段落，例如风叔知识库 MCP）
   - FAQ 中已写明的补充说明
 
   回答要求：

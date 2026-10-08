@@ -159,8 +159,10 @@ def resume_entry_ids(content: str, metadata: dict[str, Any] | None = None) -> li
         entries = _entries(config.resume)
         if not entries:
             return []
-        docs = source_documents()
         src = str((metadata or {}).get("source") or "")
+        if src == "tool":  # tool write-ups map to sidebar tool rows instead (app.modules.tools)
+            return []
+        docs = source_documents()
         candidates = [docs[src]] if src in docs else list(docs.values())
         return map_chunk(content, candidates, entries)
     except Exception as exc:

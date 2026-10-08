@@ -14,6 +14,8 @@ type Props = {
   profile: Profile
   /** Prefill the chat input with a preset question (switches to the 对话 tab). */
   onAsk: (question: string) => void
+  /** Open the 「工具」 tab at a tool's detail. */
+  onOpenTool: (id: string) => void
 }
 
 /**
@@ -21,13 +23,17 @@ type Props = {
  * top and the structured resume scrolls underneath it. Below lg: compact top bar whose 简历
  * toggle opens a drawer with contacts, PDF and the same resume entries.
  */
-export function ProfileSidebar({ profile, onAsk }: Props) {
+export function ProfileSidebar({ profile, onAsk, onOpenTool }: Props) {
   const [open, setOpen] = useState(false)
   const resume = profile.resume
 
   const ask = (question: string) => {
     setOpen(false) // mobile: close the drawer so the chat input is visible
     onAsk(question)
+  }
+  const openTool = (id: string) => {
+    setOpen(false) // mobile: close the drawer so the 工具 tab is visible
+    onOpenTool(id)
   }
 
   return (
@@ -88,7 +94,7 @@ export function ProfileSidebar({ profile, onAsk }: Props) {
           </div>
 
           <div className="border-t border-zinc-200 bg-zinc-50/60 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:px-5 lg:[scrollbar-width:thin]">
-            {resume && <ResumeSections resume={resume} onAsk={ask} />}
+            {resume && <ResumeSections resume={resume} onAsk={ask} onOpenTool={openTool} />}
             <p className="mt-5 text-[11px] leading-relaxed text-zinc-400">{profile.disclaimer}</p>
           </div>
         </div>

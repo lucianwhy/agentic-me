@@ -208,12 +208,14 @@ export function sourceName(s: Source) {
     return page ? `简历 PDF · 第 ${page} 页` : '简历 PDF'
   }
   if (src === 'about_me') return '关于我'
+  if (src === 'tool') return ['工具', m.title, m.section].filter(Boolean).map(String).join(' · ')
   return src || '资料'
 }
 
 /** Plain-text preview: drop markdown markers so "## 项目 ###" reads cleanly. */
 export const snippet = (value: string) =>
   value
+    .replace(/^【工具：[^】]*】\s*/, '') // tool chunks repeat their title/section (shown as the source name)
     .replace(/[#*`>|]+/g, ' ')
     .replace(/^\s*-\s+/gm, '')
     .replace(/\s+/g, ' ')
@@ -315,11 +317,16 @@ export function flash(el: HTMLElement) {
   )
 }
 
-/** Highlight a sidebar entry if it is on screen (on mobile the closed 简历 drawer is left alone). */
-export function flashResumeEntry(id: string) {
-  const el = document.querySelector<HTMLElement>(`[data-resume-id="${id}"]`)
+function flashVisible(selector: string) {
+  const el = document.querySelector<HTMLElement>(selector)
   if (!el || el.getClientRects().length === 0) return false
   scrollIntoNearest(el)
   flash(el)
   return true
 }
+
+/** Highlight a sidebar entry if it is on screen (on mobile the closed 简历 drawer is left alone). */
+export const flashResumeEntry = (id: string) => flashVisible(`[data-resume-id="${CSS.escape(id)}"]`)
+
+/** Highlight a sidebar 工具 row (same rules as resume entries). */
+export const flashToolEntry = (id: string) => flashVisible(`[data-tool-id="${CSS.escape(id)}"]`)

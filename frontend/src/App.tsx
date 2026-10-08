@@ -7,6 +7,7 @@ import { LoginDialog } from '@/components/LoginDialog'
 import { ProfileSidebar } from '@/components/ProfileSidebar'
 import { ProjectsPanel } from '@/components/projects/ProjectsPanel'
 import { SummaryPanel } from '@/components/SummaryPanel'
+import { ToolsPanel } from '@/components/tools/ToolsPanel'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -17,7 +18,7 @@ type Auth = { enabled: boolean; authenticated: boolean; user: AuthStatus['user']
 
 // Panels stay mounted (forceMount) so chat history / results survive tab switches.
 const PANEL = 'mt-0 min-h-0 flex-col data-[state=active]:flex data-[state=inactive]:hidden'
-// Four equal-width triggers fit a 390px screen (compact padding); natural width from sm up.
+// Five equal-width triggers fit a 390px screen (compact padding); natural width from sm up.
 const TAB = 'min-w-0 px-1.5 text-[13px] sm:flex-none sm:px-4 sm:text-sm'
 
 export default function App() {
@@ -29,12 +30,20 @@ export default function App() {
   const [model, setModel] = useState<string>(() => readStoredModel() ?? '')
   const [models, setModels] = useState<ModelOption[] | null>(null)
   const [tab, setTab] = useState('chat')
+  // Open tool in the 工具 tab (null = list). Set by the sidebar quick-nav and by chat sources.
+  const [toolId, setToolId] = useState<string | null>(null)
   const chatRef = useRef<ChatPanelHandle>(null)
 
   // Resume entries / skills: switch to 对话 and put the question in the input — never auto-send.
   const askAbout = useCallback((text: string) => {
     setTab('chat')
     chatRef.current?.prefill(text) // ChatPanel is always mounted (forceMount); it focuses after the tab shows
+  }, [])
+
+  // Sidebar 工具 rows / 「在工具页查看」 in chat sources: show that tool's detail.
+  const openTool = useCallback((id: string) => {
+    setToolId(id)
+    setTab('tools')
   }, [])
 
   useEffect(() => {
@@ -123,7 +132,7 @@ export default function App() {
       />
 
       <div className="mx-auto flex h-[100dvh] max-w-[1440px] flex-col lg:h-auto lg:min-h-screen lg:flex-row lg:items-start lg:gap-4 lg:p-4">
-        <ProfileSidebar profile={profile} onAsk={askAbout} />
+        <ProfileSidebar profile={profile} onAsk={askAbout} onOpenTool={openTool} />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:p-0">
           {auth.enabled && auth.authenticated && (
@@ -141,6 +150,7 @@ export default function App() {
               <TabsTrigger value="summary" className={TAB}>一键摘要</TabsTrigger>
               <TabsTrigger value="job" className={TAB}>岗位匹配</TabsTrigger>
               <TabsTrigger value="projects" className={TAB}>我的项目</TabsTrigger>
+              <TabsTrigger value="tools" className={TAB}>工具</TabsTrigger>
             </TabsList>
             <TabsContent value="chat" forceMount className={PANEL}>
               <ChatPanel
@@ -150,6 +160,7 @@ export default function App() {
                 onModelChange={onModelChange}
                 ensureAuth={ensureAuth}
                 onAuthRequired={onAuthRequired}
+                onOpenTool={openTool}
                 ref={chatRef}
               />
             </TabsContent>
@@ -161,6 +172,9 @@ export default function App() {
             </TabsContent>
             <TabsContent value="projects" forceMount className={PANEL}>
               <ProjectsPanel model={model} ensureAuth={ensureAuth} onAuthRequired={onAuthRequired} />
+            </TabsContent>
+            <TabsContent value="tools" forceMount className={PANEL}>
+              <ToolsPanel toolId={toolId} onSelect={setToolId} onAsk={askAbout} />
             </TabsContent>
           </Tabs>
         </main>

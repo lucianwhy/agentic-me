@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
-import { Briefcase, ExternalLink, FolderGit2, GraduationCap, MessageSquare, Wrench, type LucideIcon } from 'lucide-react'
+import { Blocks, Briefcase, ExternalLink, FolderGit2, GraduationCap, MessageSquare, Wrench, type LucideIcon } from 'lucide-react'
 
+import { ToolsNav } from '@/components/tools/ToolsNav'
 import { Button } from '@/components/ui/button'
+import { tools } from '@/data/tools'
 import type { Resume, ResumeEntry } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -108,8 +110,16 @@ function EntryCard({ id, entry, onAsk }: { id: string; entry: ResumeEntry; onAsk
   )
 }
 
-/** Structured resume (实习 / 项目 / 技能 / 教育). Every entry can prefill a tailored question in the chat. */
-export function ResumeSections({ resume, onAsk, className }: { resume: Resume; onAsk: AskFn; className?: string }) {
+type Props = {
+  resume: Resume
+  onAsk: AskFn
+  /** Open the 「工具」 tab at a tool (sidebar quick-nav). Without it the 工具 section is hidden. */
+  onOpenTool?: (id: string) => void
+  className?: string
+}
+
+/** Structured resume (实习 / 项目 / 工具 / 技能 / 教育). Every entry can prefill a tailored question in the chat. */
+export function ResumeSections({ resume, onAsk, onOpenTool, className }: Props) {
   const { internships, projects, skills, education } = resume
   return (
     <div className={cn('flex flex-col gap-5', className)} data-resume>
@@ -125,6 +135,11 @@ export function ResumeSections({ resume, onAsk, className }: { resume: Resume; o
           {projects.map((e, i) => (
             <EntryCard key={e.title} id={e.id ?? `projects-${i}`} entry={e} onAsk={onAsk} />
           ))}
+        </Section>
+      )}
+      {onOpenTool && tools.length > 0 && (
+        <Section icon={Blocks} title="工具" count={tools.length}>
+          <ToolsNav onOpen={onOpenTool} onAsk={onAsk} />
         </Section>
       )}
       {skills.length > 0 && (

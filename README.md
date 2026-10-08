@@ -85,6 +85,7 @@ ADMIN_PASSWORD=change-me   # 换成你自己的强密码，切勿提交到仓库
 
 - 用自己的简历替换 `data/CV_Demo.pdf`。
 - 编辑 `data/about_me.md`，补充简历中没有的信息；不需要时可以删除。
+- 可选：在 `data/tools/` 放工具介绍（Markdown + front matter：`id` / `title` / `aliases`），会按 `##` 章节切块入库，`id` 与 `frontend/src/data/tools.ts` 对应；不会通过 `/data` 对外提供。
 - 在 `config/base.yml` 中修改候选人信息、文件路径和名称。
 - 用你的头像替换 `static/default-avatar.png`。
 

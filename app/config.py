@@ -99,6 +99,8 @@ class DataPaths(BaseModel):
     about_me_path: str = "data/about_me.md"
     vector_db_path: str = "data/vector_db"
     analytics_log_path: str = "data/analytics.log"
+    # Tool write-ups (markdown + front matter) indexed into the knowledge base; never served.
+    tools_dir: str = "data/tools"
 
 
 class CandidateConfig(BaseModel):

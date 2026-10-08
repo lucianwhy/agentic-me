@@ -48,6 +48,7 @@ from app.modules.resume_links import resume_entry_ids
 from app.modules.retrieval_demo import limiter as retrieval_limiter
 from app.modules.retrieval_demo import retrieve_with_scores
 from app.modules.summary_pipeline import get_auto_summary
+from app.modules.tools import tool_ids
 from app.utils.analytics import AdvancedAnalytics, log_login_event
 from app.utils.logging_config import api_logger
 
@@ -84,7 +85,7 @@ def _extract_answer_text(result: dict) -> str:
 
 
 def _serialize_sources(sources) -> list:
-    """Make retrieval sources JSON-safe (content capped at 300 chars, plus resume_entry_ids)."""
+    """Make retrieval sources JSON-safe (content capped at 300 chars, plus resume_entry_ids / tool_ids)."""
     out: list = []
     for item in sources or []:
         if hasattr(item, "page_content"):
@@ -96,6 +97,8 @@ def _serialize_sources(sources) -> list:
                     "metadata": metadata,
                     # Sidebar resume cards this chunk is about, from the FULL chunk text.
                     "resume_entry_ids": resume_entry_ids(content, metadata),
+                    # Sidebar 「工具」 rows (data/tools/<id>.md chunks, or chunks naming a tool).
+                    "tool_ids": tool_ids(content, metadata),
                 }
             )
         elif isinstance(item, dict):
