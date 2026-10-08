@@ -1,5 +1,5 @@
-import { ArrowRight, Check, ExternalLink, Lightbulb, MessageSquare, Quote, Timer, Wrench, X } from 'lucide-react'
-import { Fragment, type ReactNode } from 'react'
+import { ArrowRight, Check, Copy, ExternalLink, Lightbulb, MessageSquare, Quote, Timer, Wrench, X } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { DiagramSvg } from '@/components/projects/DiagramSvg'
 import { GithubIcon } from '@/components/projects/GithubIcon'
@@ -10,48 +10,58 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Separator } from '@/components/ui/separator'
-import type { Capability, Tool, ToolProblem } from '@/data/tools'
+import { STATUS_LABEL, type Capability, type ResumeBullet, type Tool, type ToolProblem } from '@/data/tools'
 import { cn } from '@/lib/utils'
 
 type Props = { tool: Tool; onAsk: (question: string) => void }
 
 /**
- * The shared tool-page template: 解决什么问题 → 架构图 → 核心能力 → 遇到的问题 → 我学到了什么 →
- * 1 分钟讲清楚 → GitHub / Demo (only when a link exists) → 可以问我. All content comes from tools.ts.
+ * The shared tool-page template: 解决什么问题 → 架构图 → 核心能力 → 简历亮点 →
+ * 遇到的问题 → 我学到了什么 → 1 分钟讲清楚 → GitHub / Demo (only when a link exists) → 可以问我.
+ * All content comes from tools.ts. Section numbers are assigned in order; absent optional
+ * sections (简历亮点, GitHub / Demo) are skipped so the index stays consecutive.
  */
 export function ToolDetail({ tool, onAsk }: Props) {
+  const hasResume = Boolean(tool.resumeBullets?.length)
   const hasLinks = !!(tool.links?.github || tool.links?.demo)
+  let n = 0
+  const next = () => ++n
   return (
     <div className="flex flex-col gap-8 p-3 pb-10 md:p-6 md:pb-12" data-tool-detail={tool.id}>
       <Hero tool={tool} onAsk={onAsk} />
-      <Section id="problem" index={1} title="解决什么问题">
+      <Section id="problem" index={next()} title="解决什么问题">
         <ProblemStatement tool={tool} />
       </Section>
-      <Section id="architecture" index={2} title="架构图" description="检索服务和 MCP 工具部署在 Cloudflare，Agent 通过 MCP Tool Router 按需调用。">
+      <Section id="architecture" index={next()} title="架构图" description="检索服务和 MCP 工具部署在 Cloudflare，Agent 通过 MCP Tool Router 按需调用。">
         <Architecture tool={tool} />
       </Section>
-      <Section id="capabilities" index={3} title="核心能力">
+      <Section id="capabilities" index={next()} title="核心能力">
         <div className="grid gap-3 sm:grid-cols-2" data-capabilities>
           {tool.capabilities.map((c, i) => (
             <CapabilityCard key={c.title} capability={c} index={i} />
           ))}
         </div>
       </Section>
-      <Section id="problems" index={4} title="遇到的问题 → 原因 → 优化 → 学到什么" description="把它真正当作 Agent Tool 用起来以后，一个个踩到的坑。">
+      {hasResume && tool.resumeBullets && (
+        <Section id="resume" index={next()} title="简历亮点">
+          <ResumeHighlights bullets={tool.resumeBullets} />
+        </Section>
+      )}
+      <Section id="problems" index={next()} title="遇到的问题 → 原因 → 优化 → 学到什么" description="把它真正当作 Agent Tool 用起来以后，一个个踩到的坑。">
         <div className="grid gap-3 lg:grid-cols-2" data-problems>
           {tool.problems.map((p, i) => (
             <ProblemCard key={p.title} problem={p} index={i} />
           ))}
         </div>
       </Section>
-      <Section id="learned" index={5} title="我学到了什么">
+      <Section id="learned" index={next()} title="我学到了什么">
         <Learned tool={tool} />
       </Section>
-      <Section id="pitch" index={6} title="1 分钟讲清楚">
+      <Section id="pitch" index={next()} title="1 分钟讲清楚">
         <Pitch tool={tool} />
       </Section>
       {hasLinks && (
-        <Section id="links" index={7} title="GitHub / Demo">
+        <Section id="links" index={next()} title="GitHub / Demo">
           <Links tool={tool} />
         </Section>
       )}
@@ -125,10 +135,15 @@ function Hero({ tool, onAsk }: Props) {
         </div>
       </div>
       <Separator />
-      <div className="relative grid grid-cols-2 gap-px bg-zinc-200/70 lg:grid-cols-4" data-tool-keywords>
-        {tool.keywords.map((k) => (
-          <div key={k.label} className="flex flex-col gap-0.5 bg-zinc-50 px-4 py-3">
-            <span className="text-[12.5px] leading-snug font-semibold text-zinc-900">{k.label}</span>
+      <div className="relative grid grid-cols-1 gap-px bg-zinc-200/70 min-[390px]:grid-cols-2 lg:grid-cols-4" data-tool-keywords>
+        {tool.keywords.map((k, i) => (
+          <div key={k.label} className="flex min-w-0 flex-col gap-1.5 bg-zinc-50 px-3 py-2.5 sm:px-4 sm:py-3">
+            <span className="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-md border border-zinc-200 bg-white px-1.5 py-0.5">
+              <span className="mt-px flex size-4 shrink-0 items-center justify-center rounded-[3px] bg-zinc-900 font-mono text-[9px] font-medium text-white tabular-nums">
+                {i + 1}
+              </span>
+              <span className="min-w-0 text-[11.5px] leading-snug font-medium wrap-break-word text-zinc-900">{k.label}</span>
+            </span>
             <span className="text-[11px] leading-snug text-zinc-500">{k.note}</span>
           </div>
         ))}
@@ -176,6 +191,52 @@ function Architecture({ tool }: { tool: Tool }) {
   )
 }
 
+/* ---------------------------------------------------------- clipboard */
+
+/** navigator.clipboard on secure origins, with a textarea fallback when it is missing. */
+async function copyText(text: string) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    /* fall through */
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  ta.remove()
+  return ok
+}
+
+function resumeBulletClipboard(b: ResumeBullet): string {
+  const note = b.copyNote ?? (b.status && b.status !== 'done' ? STATUS_LABEL[b.status] : undefined)
+  return `• ${b.text}${note ? `（${note}）` : ''}`
+}
+
+function useCopiedFlag(ms = 1500) {
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const mark = () => {
+    setCopied(true)
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setCopied(false), ms)
+  }
+  return [copied, mark] as const
+}
+
 /* ---------------------------------------------------------- 3. 核心能力 */
 
 function CapabilityCard({ capability: c, index }: { capability: Capability; index: number }) {
@@ -203,7 +264,67 @@ function CapabilityCard({ capability: c, index }: { capability: Capability; inde
   )
 }
 
-/* ---------------------------------------------- 4. 问题 → 原因 → 优化 → 学到 */
+/* ---------------------------------------------------------- 4. 简历亮点 */
+
+function ResumeHighlights({ bullets }: { bullets: ResumeBullet[] }) {
+  const [copied, mark] = useCopiedFlag()
+  const allText = bullets.map(resumeBulletClipboard).join('\n')
+
+  const onCopyAll = async () => {
+    if (await copyText(allText)) mark()
+  }
+
+  return (
+    <Card className="gap-0 overflow-hidden py-0 shadow-xs">
+      <div className="flex items-center justify-between gap-2 border-b bg-zinc-50/60 px-3 py-2 sm:px-4">
+        <span className="text-xs font-medium text-zinc-500">可直接贴进简历</span>
+        <Button type="button" size="xs" variant="outline" className="bg-white" data-copy-resume onClick={onCopyAll}>
+          {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
+          {copied ? '已复制' : '复制全部'}
+        </Button>
+      </div>
+      <ol className="divide-y" data-resume-bullets>
+        {bullets.map((b, i) => (
+          <ResumeBulletRow key={b.text} bullet={b} index={i} />
+        ))}
+      </ol>
+    </Card>
+  )
+}
+
+function ResumeBulletRow({ bullet: b, index }: { bullet: ResumeBullet; index: number }) {
+  const [copied, mark] = useCopiedFlag()
+  const onCopy = async () => {
+    if (await copyText(resumeBulletClipboard(b))) mark()
+  }
+  return (
+    <li className="group/rb relative flex gap-3 px-3 py-3 sm:px-4 sm:py-3.5">
+      <span className="mt-px w-5 shrink-0 font-mono text-[13px] font-semibold text-zinc-300 tabular-nums">{index + 1}.</span>
+      <div className="min-w-0 flex-1 pr-0 md:pr-8">
+        <p className="text-sm leading-[1.7] text-zinc-800">
+          {b.text}
+          {b.status && b.status !== 'done' && <ToolStatusBadge status={b.status} className="ml-1.5 align-middle" />}
+        </p>
+        {b.statusNote && <p className="mt-1 text-[11px] leading-relaxed text-amber-800/80">{b.statusNote}</p>}
+      </div>
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        className={cn(
+          'absolute top-2.5 right-2 hidden text-zinc-400 hover:text-zinc-900 md:inline-flex',
+          copied ? 'opacity-100' : 'opacity-0 group-hover/rb:opacity-100 focus-visible:opacity-100',
+        )}
+        aria-label={copied ? '已复制' : '复制这条'}
+        onClick={onCopy}
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
+    </li>
+  )
+}
+
+/* ---------------------------------------------- 5. 问题 → 原因 → 优化 → 学到 */
 
 const STEP_ROWS = [
   { key: 'cause', label: '原因', icon: X },
@@ -353,7 +474,7 @@ function Schema({ schema }: { schema: NonNullable<ToolProblem['schema']> }) {
   )
 }
 
-/* -------------------------------------------------------- 5. 我学到了什么 */
+/* -------------------------------------------------------- 6. 我学到了什么 */
 
 function Learned({ tool }: { tool: Tool }) {
   return (
@@ -366,7 +487,7 @@ function Learned({ tool }: { tool: Tool }) {
                 <HoverCardTrigger asChild>
                   <span className="w-fit cursor-default text-[12.5px] font-semibold text-zinc-900">{l.keyword}</span>
                 </HoverCardTrigger>
-                <HoverCardContent side="top" className="w-64 p-3 text-xs text-zinc-600">
+                <HoverCardContent side="top" className="w-72 p-3 text-xs leading-relaxed text-zinc-600">
                   {tool.keywords.find((k) => k.label === l.keyword)?.note ?? l.keyword}
                 </HoverCardContent>
               </HoverCard>
@@ -384,7 +505,7 @@ function Learned({ tool }: { tool: Tool }) {
   )
 }
 
-/* ------------------------------------------------------- 6. 1 分钟讲清楚 */
+/* ------------------------------------------------------- 7. 1 分钟讲清楚 */
 
 function Pitch({ tool }: { tool: Tool }) {
   return (
@@ -413,7 +534,7 @@ function Pitch({ tool }: { tool: Tool }) {
   )
 }
 
-/* ------------------------------------------------------ 7. GitHub / Demo */
+/* ------------------------------------------------------ 8. GitHub / Demo */
 
 function Links({ tool }: { tool: Tool }) {
   return (

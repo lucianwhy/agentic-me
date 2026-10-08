@@ -2,10 +2,11 @@
  * Tools shown in the 「工具」 tab and the sidebar quick-nav. Every tool uses the same page
  * template, so adding one (DTS 自动化、闲鱼自动化、公众号 MCP …) only means adding an entry here:
  *
- *   1. 解决什么问题  problem          4. 遇到的问题 → 原因 → 优化 → 学到什么  problems
- *   2. 架构图        diagram          5. 我学到了什么                          learned + takeaway
- *   3. 核心能力      capabilities     6. 1 分钟讲清楚                          pitch
- *                                     7. GitHub / Demo（只在有链接时显示）       links
+ *   1. 解决什么问题  problem          5. 遇到的问题 → 原因 → 优化 → 学到什么  problems
+ *   2. 架构图        diagram          6. 我学到了什么                          learned + takeaway
+ *   3. 核心能力      capabilities     7. 1 分钟讲清楚                          pitch
+ *   4. 简历亮点      resumeBullets    8. GitHub / Demo（只在有链接时显示）       links
+ *      （可选；缺省则跳过并重编号）
  *
  * `id` must match data/tools/<id>.md on the backend: that file is the knowledge-base copy of the
  * same write-up, and chat sources retrieved from it carry `tool_ids: [id]`, which highlights the
@@ -20,6 +21,16 @@ export type ToolStatus = 'done' | 'designing' | 'planned'
 export const STATUS_LABEL: Record<Exclude<ToolStatus, 'done'>, string> = { designing: '设计中', planned: '规划中' }
 
 export type Keyword = { label: string; note: string }
+
+/** One line on the 「简历亮点」 card. `status` marks unfinished work (visible badge + honest clipboard text). */
+export type ResumeBullet = {
+  text: string
+  status?: ToolStatus
+  /** Which part is not built yet (shown under the bullet, next to the badge). */
+  statusNote?: string
+  /** Appended in parentheses when copying, so clipboard text stays honest. */
+  copyNote?: string
+}
 
 export type Capability = {
   title: string
@@ -74,14 +85,16 @@ export type Tool = {
   diagram: { id: string; caption: string; legend?: string }
   /** 3. 核心能力 (rendered 01–04). */
   capabilities: Capability[]
-  /** 4. 遇到的问题 → 原因 → 优化 → 学到什么 */
+  /** 4. 简历亮点 — optional; omitted tools skip the section and numbering shifts. */
+  resumeBullets?: ResumeBullet[]
+  /** 5. 遇到的问题 → 原因 → 优化 → 学到什么 */
   problems: ToolProblem[]
-  /** 5. 我学到了什么 — one line per keyword, then the takeaway quote. */
+  /** 6. 我学到了什么 — one line per keyword, then the takeaway quote. */
   learned: { keyword: string; text: string }[]
   takeaway: string
-  /** 6. 1 分钟讲清楚 (paragraphs, first person). */
+  /** 7. 1 分钟讲清楚 (paragraphs, first person). */
   pitch: string[]
-  /** 7. Shown only when set. */
+  /** 8. Shown only when set. */
   links?: { github?: string; demo?: string }
   /** Sidebar / hero 「问 AI」 prefill (never auto-sent). */
   ask: string
@@ -101,10 +114,10 @@ export const tools: Tool[] = [
     oneLiner: '将文章知识库封装为 MCP Tool，让 ChatGPT / Agent 可以直接搜索观点、定位原文并按需获取上下文，而不是一次把整个知识库塞进模型。',
     positioning: '把个人知识库做成可被 Agent 稳定调用的 RAG 服务，并围绕检索质量、上下文成本和工具接口做了一轮工程化优化。',
     keywords: [
-      { label: 'Agent-friendly Tool Design', note: '工具名、描述和 schema 是给模型看的' },
-      { label: 'Hybrid RAG', note: '向量 + 关键词 + 精确短语检索' },
-      { label: 'Progressive Context Loading', note: '先给最少但够用的上下文' },
-      { label: 'Guardrails / Token Efficiency', note: '用服务端限制兜底 token 成本' },
+      { label: 'Agent-friendly Tool Design', note: '不是普通 REST API，而是考虑 LLM 怎么理解、怎么选工具' },
+      { label: 'Hybrid RAG', note: '向量召回 + keyword/exact + metadata' },
+      { label: 'Progressive Context Loading', note: 'snippet → chunk context → 全文' },
+      { label: 'Guardrails / Token Efficiency', note: '接口职责、分页、max_chars 控制行为与上下文成本' },
     ],
     problem: {
       oneLiner: '让 Agent 能在一个文章知识库里「找到位置、读够上下文」，而不是把整个知识库或整篇文章塞进模型。',
@@ -140,6 +153,23 @@ export const tools: Tool[] = [
         title: '混合检索与分页',
         detail: '向量 / 关键词 / 精确短语检索融合，做文档级去重；全文用 offset / next_offset 分页读取。',
         chips: ['Vector', 'Keyword', 'Exact Phrase', 'Dedup', 'offset / next_offset'],
+      },
+    ],
+    resumeBullets: [
+      {
+        text: '设计 Document → Chunk → Embedding → Retrieval → MCP Tool → Agent 检索链路，通过 document_id / chunk_id 建立父文档与检索片段映射。',
+      },
+      {
+        text: '优化 Agent-friendly MCP 接口，将底层复杂检索参数抽象为 semantic / exact / balanced 等高层模式，减少模型工具选择和参数错误。',
+      },
+      {
+        text: '针对长文本 RAG 上下文膨胀问题，设计 Snippet → Chunk Context → Full Article 渐进式上下文加载机制，避免检索命中后直接注入整篇长文。',
+        status: 'designing',
+        statusNote: 'Chunk Context（get_chunk_context，相邻 chunk 扩展）设计中；Snippet 与全文分页已上线',
+        copyNote: 'Chunk Context 部分设计中',
+      },
+      {
+        text: '支持向量检索、关键词/精确检索、文档级去重及分页读取，并通过 offset / next_offset 控制长文章按需读取，降低无效上下文和 Token 消耗。',
       },
     ],
     problems: [

@@ -62,6 +62,15 @@ RAG 知识库 MCP 是我自己做的一个工具：将文章知识库封装为 M
 
 优化前把底层参数都暴露给 Agent：retrieval_type、fusion_method、threshold、context_expansion、rerank、metadata_only 等。优化后只保留 query、top_k、mode（semantic / exact / balanced）、source_scope、date_range；balanced 是否等于「向量 + 关键词 + RRF」由服务端决定。我的体会：给模型更多参数并不一定让 Agent 更强，有时候减少可选参数反而能提升稳定性。
 
+## 简历上怎么写（简历亮点）
+
+四个关键词：Agent-friendly Tool Design — 不是普通 REST API，而是考虑 LLM 怎么理解、怎么选工具；Hybrid RAG — 向量召回 + keyword/exact + metadata；Progressive Context Loading — snippet → chunk context → 全文；Guardrails / Token Efficiency — 接口职责、分页、max_chars 控制行为与上下文成本。
+
+1. 设计 Document → Chunk → Embedding → Retrieval → MCP Tool → Agent 检索链路，通过 document_id / chunk_id 建立父文档与检索片段映射。
+2. 优化 Agent-friendly MCP 接口，将底层复杂检索参数抽象为 semantic / exact / balanced 等高层模式，减少模型工具选择和参数错误。
+3. 针对长文本 RAG 上下文膨胀问题，设计 Snippet → Chunk Context → Full Article 渐进式上下文加载机制，避免检索命中后直接注入整篇长文。其中 Chunk Context（get_chunk_context，相邻 chunk 扩展）设计中、尚未实现；Snippet 与全文分页已上线。
+4. 支持向量检索、关键词/精确检索、文档级去重及分页读取，并通过 offset / next_offset 控制长文章按需读取，降低无效上下文和 Token 消耗。
+
 ## 我学到了什么
 
 - Agent-friendly Tool Design：工具名、描述、schema 都是给模型看的路由信号，参数越少越稳定。

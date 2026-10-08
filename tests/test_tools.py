@@ -96,9 +96,30 @@ def test_get_chunk_context_is_documented_as_designing():
 
 def test_frontend_marks_chunk_context_as_designing():
     ts = (ROOT / "frontend/src/data/tools.ts").read_text(encoding="utf-8")
-    assert ts.count("status: 'designing'") >= 4  # capability 03, P2, P3, P4 role
+    assert ts.count("status: 'designing'") >= 4  # capability 03, P2, P3, P4 role, resume bullet 3
     sources = (ROOT / "frontend/src/data/diagram-sources.ts").read_text(encoding="utf-8")
     assert re.search(r"get_chunk_context[^\n]*设计中", sources)
+
+
+def test_resume_highlights_in_frontend_and_kb():
+    """tools.ts resumeBullets for rag-knowledge-mcp includes a designing entry; the KB section says 设计中."""
+    ts = (ROOT / "frontend/src/data/tools.ts").read_text(encoding="utf-8")
+    assert "id: 'rag-knowledge-mcp'" in ts
+    block = re.search(r"resumeBullets:\s*\[(.*?)\]\s*,\s*problems:", ts, re.DOTALL)
+    assert block, "rag-knowledge-mcp must declare resumeBullets"
+    assert "status: 'designing'" in block.group(1)
+
+    md = (ROOT / "data/tools/rag-knowledge-mcp.md").read_text(encoding="utf-8")
+    assert "## 简历上怎么写（简历亮点）" in md
+    section = md.split("## 简历上怎么写（简历亮点）", 1)[1].split("\n## ", 1)[0]
+    assert "设计中" in section
+    assert "get_chunk_context" in section
+    chunks = [
+        c
+        for c in tools_mod.load_tool_chunks()
+        if c.metadata["tool_id"] == "rag-knowledge-mcp" and str(c.metadata["section"]).startswith("简历上怎么写")
+    ]
+    assert len(chunks) == 1
 
 
 def test_tool_ids_from_metadata_and_mentions(demo_tools_dir):
