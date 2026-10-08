@@ -155,7 +155,7 @@ export const tools: Tool[] = [
     playground: {
       kind: 'mcp',
       server: 'fengshu-knowledge（Cloudflare Workers · Streamable HTTP）',
-      intro: '通过本站后端调用已部署的知识库 MCP（白名单 + 服务端限幅 + 按 IP 限流），下面看到的是真实工具调用。',
+      intro: '通过本站后端调用已部署的知识库 MCP（白名单 + 服务端限幅 + 按 IP 限流），每一步请求与返回都会展示在时间线里。',
       examples: ['AI 会取代哪些工作', '普通人怎么应对 AI 冲击', '做题家', '信息不对称'],
       searchTool: 'search_fengshu_knowledge',
       articleTool: 'get_fengshu_article',

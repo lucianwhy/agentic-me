@@ -32,7 +32,7 @@ def _refuse(request: httpx.Request) -> httpx.Response:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_mcp(monkeypatch):
+def _isolate_mcp(monkeypatch, tmp_path):
     """Drop MCP env, disable the demo limiter, and refuse real network calls."""
     for key in (
         "MCP_URL",
@@ -40,10 +40,14 @@ def _isolate_mcp(monkeypatch):
         "MCP_ENABLE_CHUNK_CONTEXT",
         "MCP_ALLOW_PAID",
         "MCP_MOCK",
+        "MCP_NOTICE",
         "MCP_RATE_MIN_INTERVAL_MS",
         "MCP_RATE_PER_MINUTE",
     ):
         monkeypatch.delenv(key, raising=False)
+    # pydantic-settings does not export .env into os.environ; keep tests off the repo file.
+    monkeypatch.setattr(mcp_proxy, "_DOTENV_PATH", tmp_path / "absent.env")
+    mcp_proxy._dotenv_cache = None
     monkeypatch.setattr(config.rate_limit, "enabled", False)
     with mcp_proxy.mcp_limiter._lock:
         mcp_proxy.mcp_limiter._hits.clear()
@@ -195,6 +199,31 @@ class TestClamping:
         assert _post("get_fengshu_article", {}).status_code == 422
         ok = _post("get_fengshu_article", {"document_id": "a" * 128})
         assert ok.status_code == 200
+
+
+class TestDotenv:
+    def test_file_value_is_used_until_environ_overrides(self, monkeypatch, tmp_path):
+        env_file = tmp_path / "demo.env"
+        env_file.write_text(
+            "MCP_URL=http://from-file.example/mcp\nMCP_RATE_PER_MINUTE=7\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(mcp_proxy, "_DOTENV_PATH", env_file)
+        mcp_proxy._dotenv_cache = None
+        monkeypatch.delenv("MCP_URL", raising=False)
+        monkeypatch.delenv("MCP_RATE_PER_MINUTE", raising=False)
+
+        settings = mcp_proxy.get_settings()
+        assert settings.url == "http://from-file.example/mcp"
+        assert settings.available is True
+        mcp_proxy.refresh_rate_limits()
+        assert mcp_proxy.mcp_limiter.per_minute == 7
+
+        monkeypatch.setenv("MCP_URL", "http://from-env.example/mcp")
+        monkeypatch.setenv("MCP_RATE_PER_MINUTE", "9")
+        assert mcp_proxy.get_settings().url == "http://from-env.example/mcp"
+        mcp_proxy.refresh_rate_limits()
+        assert mcp_proxy.mcp_limiter.per_minute == 9
 
 
 class TestAvailability:
@@ -599,9 +628,25 @@ class TestToolsList:
         assert body["chunk_context_enabled"] is False
         assert body["server"] == "fengshu-knowledge"
         assert "message" not in body
+        assert body["notice"] == mcp_proxy.MOCK_NOTICE
         names = [tool["name"] for tool in body["tools"]]
         assert names == ["search_fengshu_knowledge", "get_fengshu_article"]
         assert "query" in body["tools"][0]["inputSchema"]["properties"]
+
+    def test_notice_override_applies_in_any_mode(self, monkeypatch):
+        monkeypatch.setenv("MCP_MOCK", "1")
+        monkeypatch.setenv("MCP_NOTICE", "自定义说明")
+        assert client.get("/api/mcp/tools").json()["notice"] == "自定义说明"
+
+        monkeypatch.delenv("MCP_MOCK")
+        monkeypatch.setenv("MCP_URL", "http://mcp.test/mcp")
+        monkeypatch.setattr(mcp_proxy, "list_tools", lambda: ([], False))
+        live = client.get("/api/mcp/tools").json()
+        assert live["mock"] is False
+        assert live["notice"] == "自定义说明"
+
+        monkeypatch.delenv("MCP_NOTICE")
+        assert client.get("/api/mcp/tools").json()["notice"] is None
 
     def test_upstream_list_filters_and_caches(self, monkeypatch):
         _enable(monkeypatch)
@@ -773,6 +818,19 @@ class TestMockMode:
         for row in results:
             assert row["title"].startswith("示例")
             assert row["access"] == "free"
+            assert row["exact_match"] is False
+        assert results[0]["title"] == "示例：增长"
+        assert "增长" in results[0]["snippet"]
+
+        exact = _post(
+            "search_fengshu_knowledge",
+            {"query": "做题家", "mode": "exact", "top_k": 5},
+        )
+        assert exact.status_code == 200
+        exact_rows = exact.json()["result"]["results"]
+        assert exact_rows[0]["title"] == "示例：做题家"
+        assert exact_rows[0]["exact_match"] is True
+        assert all(row["exact_match"] is False for row in exact_rows[1:])
 
     def test_article_paging_ends_with_null(self, monkeypatch):
         monkeypatch.setenv("MCP_MOCK", "1")

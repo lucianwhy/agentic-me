@@ -19,7 +19,7 @@ RAG 知识库 MCP 是我自己做的一个工具：将文章知识库封装为 M
 - 设计中、尚未实现：get_chunk_context，也就是按 document_id + chunk_index 读取相邻 chunk 的上下文扩展。渐进式上下文加载里的 Chunk Context / Neighbor Chunks 这一级目前还在设计中。
 - 如果有人问 get_chunk_context 实现了没有：还没有，目前处于设计中。
 
-在线体验：站点后端充当 MCP 客户端，用普通 JSON-RPC 走 Streamable HTTP 调用已部署的知识库。公开白名单是 search_fengshu_knowledge 和 get_fengshu_article。服务端把 top_k 限在 ≤ 5、max_chars 限在 ≤ 3000、检索词限在 200 字以内，并按 IP 限流。公开体验只检索免费文章。get_chunk_context 仍在设计中，本站未开放。
+在线体验：站点后端代理调用（普通 JSON-RPC over Streamable HTTP）；线上服务器暂时连不上 workers.dev 时以示例数据演示。公开白名单是 search_fengshu_knowledge 和 get_fengshu_article。服务端把 top_k 限在 ≤ 5、max_chars 限在 ≤ 3000、检索词限在 200 字以内，并按 IP 限流。公开体验只检索免费文章。get_chunk_context 仍在设计中，本站未开放。
 
 ## 架构
 

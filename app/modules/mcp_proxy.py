@@ -23,9 +23,11 @@ import threading
 import time
 import urllib.parse
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import dotenv_values
 
 from app.modules.retrieval_demo import RetrievalRateLimiter
 from app.utils.logging_config import api_logger
@@ -42,6 +44,11 @@ TIMEOUT_MESSAGE = "知识库 MCP 响应超时，请稍后重试"
 UPSTREAM_MESSAGE = "知识库 MCP 暂时不可用，请稍后重试"
 RPC_ERROR_MESSAGE = "知识库 MCP 调用失败，请稍后重试"
 PARSE_MESSAGE = "知识库 MCP 返回了无法解析的内容"
+# Shown on GET /api/mcp/tools while MCP_MOCK is on, unless MCP_NOTICE is set.
+MOCK_NOTICE = (
+    "当前为示例数据：本站服务器位于国内，暂时无法直连 Cloudflare workers.dev。"
+    "请求白名单、参数限幅、分页与限流逻辑与真实调用一致，接入自定义域名后切换为真实调用。"
+)
 
 SEARCH_TOOL = "search_fengshu_knowledge"
 ARTICLE_TOOL = "get_fengshu_article"
@@ -186,12 +193,50 @@ class McpSettings:
         return self.mock or bool(self.url)
 
 
+# Repo root, not the process CWD. systemd starts the app with WorkingDirectory
+# set, but pydantic-settings reads `.env` without exporting it into os.environ.
+_DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+# (path, mtime_ns) -> parsed values. Editing the file changes mtime and reloads.
+_dotenv_cache: tuple[str, int, dict[str, str]] | None = None
+_dotenv_lock = threading.Lock()
+
+
+def _dotenv_values() -> dict[str, str]:
+    """Project-root `.env`. Missing file is empty. Cached until mtime changes."""
+    global _dotenv_cache
+    path = _DOTENV_PATH
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        return {}
+    key = (str(path), mtime_ns)
+    with _dotenv_lock:
+        cached = _dotenv_cache
+        if cached is not None and cached[0] == key[0] and cached[1] == key[1]:
+            return cached[2]
+        parsed = dotenv_values(path)
+        values = {
+            str(name): value if isinstance(value, str) else ""
+            for name, value in parsed.items()
+            if name
+        }
+        _dotenv_cache = (key[0], key[1], values)
+        return values
+
+
+def _env(name: str) -> str:
+    """Process environment wins; otherwise the same key in the project-root `.env`."""
+    if name in os.environ:
+        return os.environ[name]
+    return _dotenv_values().get(name, "")
+
+
 def _flag(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in _TRUE_VALUES
+    return _env(name).strip().lower() in _TRUE_VALUES
 
 
 def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name, "").strip()
+    raw = _env(name).strip()
     if not raw:
         return default
     try:
@@ -202,21 +247,31 @@ def _env_int(name: str, default: int) -> int:
 
 def get_settings() -> McpSettings:
     return McpSettings(
-        url=os.getenv("MCP_URL", "").strip(),
-        token=os.getenv("MCP_TOKEN", "").strip(),
+        url=_env("MCP_URL").strip(),
+        token=_env("MCP_TOKEN").strip(),
         chunk_context=_flag("MCP_ENABLE_CHUNK_CONTEXT"),
         allow_paid=_flag("MCP_ALLOW_PAID"),
         mock=_flag("MCP_MOCK"),
     )
 
 
+def _notice(settings: McpSettings) -> str | None:
+    """MCP_NOTICE overrides the mock default in every mode. Empty means unset."""
+    custom = _env("MCP_NOTICE").strip()
+    if custom:
+        return custom
+    if settings.mock:
+        return MOCK_NOTICE
+    return None
+
+
 def redact(text: str) -> str:
     """Drop bearer tokens and URL paths/queries before anything is logged."""
     text = text[:2000]
-    token = os.getenv("MCP_TOKEN", "").strip()
+    token = _env("MCP_TOKEN").strip()
     if len(token) >= 4:
         text = text.replace(token, "***")
-    url = os.getenv("MCP_URL", "").strip()
+    url = _env("MCP_URL").strip()
     if len(url) >= 8:
         text = text.replace(url, "***")
     text = _BEARER_RE.sub("Bearer ***", text)
@@ -475,6 +530,7 @@ def list_tools() -> tuple[list[dict[str, Any]], bool]:
 def tools_status() -> dict[str, Any]:
     """Payload for GET /api/mcp/tools. Never raises."""
     settings = get_settings()
+    notice = _notice(settings)
     if not settings.available:
         return {
             "available": False,
@@ -484,6 +540,7 @@ def tools_status() -> dict[str, Any]:
             "tools": [],
             "degraded": False,
             "message": UNAVAILABLE_MESSAGE,
+            "notice": notice,
         }
     try:
         tools, degraded = list_tools()
@@ -496,6 +553,7 @@ def tools_status() -> dict[str, Any]:
             "tools": [],
             "degraded": False,
             "message": UNAVAILABLE_MESSAGE,
+            "notice": notice,
         }
     except McpUpstreamError:
         tools, degraded = fallback_tools(settings), True
@@ -506,6 +564,7 @@ def tools_status() -> dict[str, Any]:
         "chunk_context_enabled": settings.chunk_context,
         "tools": tools,
         "degraded": degraded,
+        "notice": notice,
     }
 
 
@@ -879,8 +938,16 @@ def _mock_search(clean: dict[str, Any], settings: McpSettings) -> dict[str, Any]
         if clean.get("date_to") and item["date"] > clean["date_to"]:
             continue
         row = dict(item)
-        haystack = f"{row['title']}{row['snippet']}"
-        row["exact_match"] = bool(exact and clean["query"] in haystack)
+        # The first hit echoes the query and the mode so repeated demos are not identical.
+        # exact_match is true only in exact mode, and only on that echoed hit.
+        if not rows:
+            query = str(clean["query"])
+            row["title"] = f"示例：{query}"
+            row["raw_title"] = row["title"]
+            row["snippet"] = f"【示例】与「{query}」相关的演示片段（{clean['mode']}）。"
+            row["exact_match"] = exact
+        else:
+            row["exact_match"] = False
         rows.append(row)
     rows = rows[: clean["top_k"]]
     return _filter_search(

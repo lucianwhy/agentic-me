@@ -44,7 +44,7 @@ export function ToolDetail({ tool, onAsk, ensureAuth, onAuthRequired, authed }: 
         <Architecture tool={tool} />
       </Section>
       {tool.playground?.kind === 'mcp' && (
-        <Section id="playground" index={next()} title="在线体验" description={tool.playground.intro}>
+        <Section id="playground" index={next()} title="在线体验">
           <McpPlayground playground={tool.playground} ensureAuth={ensureAuth} onAuthRequired={onAuthRequired} authed={authed} />
         </Section>
       )}

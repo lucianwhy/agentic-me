@@ -2,6 +2,7 @@ import { ChevronRight, CornerDownLeft, ExternalLink, Search } from 'lucide-react
 import { useEffect, useRef, useState } from 'react'
 
 import { ToolStatusBadge } from '@/components/tools/ToolStatusBadge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -222,9 +223,17 @@ export function McpPlayground({ playground, ensureAuth, onAuthRequired, authed }
   }
 
   const toolNames = toolsState.kind === 'ready' ? toolsState.data.tools.map((tool) => tool.name).filter(Boolean) : []
+  const sessionMock = toolsState.kind === 'ready' && toolsState.data.mock
+  const realCall = toolsState.kind === 'ready' && toolsState.data.available && !toolsState.data.mock
+  const notice = toolsState.kind === 'ready' && typeof toolsState.data.notice === 'string' ? toolsState.data.notice : ''
 
   return (
-    <Card className="min-w-0 gap-0 overflow-hidden py-0 shadow-xs" data-mcp-playground>
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="text-xs leading-relaxed text-zinc-500 sm:text-sm">
+        {playground.intro}
+        {realCall ? '（真实调用）' : ''}
+      </p>
+      <Card className="min-w-0 gap-0 overflow-hidden py-0 shadow-xs" data-mcp-playground>
       <div className="flex min-w-0 flex-col gap-3 border-b bg-zinc-50/60 p-3">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -244,6 +253,12 @@ export function McpPlayground({ playground, ensureAuth, onAuthRequired, authed }
             <p className="text-[11px] text-zinc-500">工具列表暂时来自本地回退（上游 tools/list 失败），调用仍走服务端。</p>
           )}
         </div>
+
+        {sessionMock && notice && (
+          <Alert role="status" className="border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+            <AlertDescription className="text-[12px] leading-relaxed text-amber-900">{notice}</AlertDescription>
+          </Alert>
+        )}
 
         <form
           className="flex min-w-0 flex-wrap gap-2"
@@ -386,6 +401,7 @@ export function McpPlayground({ playground, ensureAuth, onAuthRequired, authed }
                     entry={entry}
                     playground={playground}
                     busy={busy}
+                    sample={sessionMock}
                     contextClosed={contextClosed}
                     onReadArticle={readArticle}
                   />
@@ -402,7 +418,8 @@ export function McpPlayground({ playground, ensureAuth, onAuthRequired, authed }
           </div>
         )}
       </div>
-    </Card>
+      </Card>
+    </div>
   )
 }
 
@@ -429,17 +446,15 @@ function StatusPill({ state }: { state: ToolsState }) {
       </Badge>
     )
   }
+  if (state.data.mock) {
+    return (
+      <Badge className="border-amber-300 bg-amber-50 font-normal text-amber-800">示例数据</Badge>
+    )
+  }
   return (
-    <>
-      <Badge variant="secondary" className="font-normal">
-        已连接 · {state.data.tools.length} 个工具
-      </Badge>
-      {state.data.mock && (
-        <Badge variant="outline" className="font-normal">
-          示例数据
-        </Badge>
-      )}
-    </>
+    <Badge variant="secondary" className="font-normal">
+      已连接 · {state.data.tools.length} 个工具
+    </Badge>
   )
 }
 
@@ -496,12 +511,14 @@ function TimelineCard({
   entry,
   playground,
   busy,
+  sample,
   contextClosed,
   onReadArticle,
 }: {
   entry: TimelineEntry
   playground: ToolPlayground
   busy: boolean
+  sample: boolean
   contextClosed: boolean
   onReadArticle: (documentId: string, offset: number) => void
 }) {
@@ -529,10 +546,8 @@ function TimelineCard({
             {formatLatency(latency)}
           </Badge>
         )}
-        {entry.call?.mock && (
-          <Badge variant="outline" className="font-normal">
-            示例数据
-          </Badge>
+        {(sample || entry.call?.mock) && (
+          <Badge className="border-amber-300 bg-amber-50 font-normal text-amber-800">示例数据</Badge>
         )}
         {(entry.call?.clamped ?? []).map((note) => (
           <Badge key={note} variant="secondary" className="max-w-full font-mono font-normal">
@@ -543,7 +558,11 @@ function TimelineCard({
 
       {entry.phase === 'running' && entry.tool === playground.searchTool && (
         <div className="mt-2 flex flex-col gap-2" role="status">
-          <p className="text-[11px] text-zinc-500">正在调用 {playground.searchTool}（向量检索约 5–9 s）</p>
+          <p className="text-[11px] text-zinc-500">
+            {sample
+              ? `正在调用 ${playground.searchTool}（示例数据）`
+              : `正在调用 ${playground.searchTool}（向量检索约 5–9 s）`}
+          </p>
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex flex-col gap-1.5 rounded-md border p-2">
               <Skeleton className="h-3 w-40" />

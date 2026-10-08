@@ -308,6 +308,8 @@ export type McpToolsResponse = {
   tools: McpToolDescriptor[]
   degraded: boolean
   message?: string
+  /** Set in mock mode, or whenever MCP_NOTICE is non-empty. */
+  notice?: string | null
 }
 
 export type McpCallResponse = {
