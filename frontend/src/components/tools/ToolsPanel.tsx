@@ -23,9 +23,13 @@ type Props = {
   onSelect: (id: string | null) => void
   /** Prefill the chat input (switches to 对话; never sends). */
   onAsk: (question: string) => void
+  ensureAuth: () => boolean
+  onAuthRequired: () => void
+  /** False while invite-code auth is on and the visitor has no session. */
+  authed: boolean
 }
 
-export function ToolsPanel({ toolId, onSelect, onAsk }: Props) {
+export function ToolsPanel({ toolId, onSelect, onAsk, ensureAuth, onAuthRequired, authed }: Props) {
   const tool = tools.find((t) => t.id === toolId) ?? null
 
   return (
@@ -65,7 +69,11 @@ export function ToolsPanel({ toolId, onSelect, onAsk }: Props) {
       </div>
       {/* key: every open starts at the top of that tool's detail */}
       <ScrollArea key={tool?.id ?? 'list'} className="min-h-0 flex-1">
-        {tool ? <ToolDetail tool={tool} onAsk={onAsk} /> : <ToolList onOpen={onSelect} />}
+        {tool ? (
+          <ToolDetail tool={tool} onAsk={onAsk} ensureAuth={ensureAuth} onAuthRequired={onAuthRequired} authed={authed} />
+        ) : (
+          <ToolList onOpen={onSelect} />
+        )}
       </ScrollArea>
     </Card>
   )

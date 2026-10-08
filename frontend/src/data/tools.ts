@@ -2,10 +2,12 @@
  * Tools shown in the 「工具」 tab and the sidebar quick-nav. Every tool uses the same page
  * template, so adding one (DTS 自动化、闲鱼自动化、公众号 MCP …) only means adding an entry here:
  *
- *   1. 解决什么问题  problem          5. 遇到的问题 → 原因 → 优化 → 学到什么  problems
- *   2. 架构图        diagram          6. 我学到了什么                          learned + takeaway
- *   3. 核心能力      capabilities     7. 1 分钟讲清楚                          pitch
- *   4. 简历亮点      resumeBullets    8. GitHub / Demo（只在有链接时显示）       links
+ *   1. 解决什么问题  problem          6. 遇到的问题 → 原因 → 优化 → 学到什么  problems
+ *   2. 架构图        diagram          7. 我学到了什么                          learned + takeaway
+ *   3. 在线体验      playground       8. 1 分钟讲清楚                          pitch
+ *      （可选；紧接架构图，缺省则跳过并重编号）
+ *   4. 核心能力      capabilities     9. GitHub / Demo（只在有链接时显示）       links
+ *   5. 简历亮点      resumeBullets
  *      （可选；缺省则跳过并重编号）
  *
  * `id` must match data/tools/<id>.md on the backend: that file is the knowledge-base copy of the
@@ -66,6 +68,23 @@ export type ToolProblem = {
   chips?: string[]
 }
 
+/**
+ * Optional 「在线体验」, rendered immediately after 架构图.
+ * `contextStatus: 'designing'` disables that tool's button and shows a 设计中 badge.
+ */
+export type ToolPlayground = {
+  kind: 'mcp'
+  /** Header label, including where the server runs. */
+  server: string
+  /** One line under the section title. */
+  intro: string
+  examples: string[]
+  searchTool: string
+  articleTool: string
+  contextTool: string
+  contextStatus?: ToolStatus
+}
+
 export type Tool = {
   id: string
   name: string
@@ -83,18 +102,20 @@ export type Tool = {
   problem: { oneLiner: string; paragraph: string; dataSource?: string }
   /** 2. 架构图 — `id` must be a key in data/diagram-sources.ts. */
   diagram: { id: string; caption: string; legend?: string }
-  /** 3. 核心能力 (rendered 01–04). */
+  /** 3. 在线体验 — optional; omitted tools skip the section and numbering shifts. */
+  playground?: ToolPlayground
+  /** 4. 核心能力 (rendered 01–04). */
   capabilities: Capability[]
-  /** 4. 简历亮点 — optional; omitted tools skip the section and numbering shifts. */
+  /** 5. 简历亮点 — optional; omitted tools skip the section and numbering shifts. */
   resumeBullets?: ResumeBullet[]
-  /** 5. 遇到的问题 → 原因 → 优化 → 学到什么 */
+  /** 6. 遇到的问题 → 原因 → 优化 → 学到什么 */
   problems: ToolProblem[]
-  /** 6. 我学到了什么 — one line per keyword, then the takeaway quote. */
+  /** 7. 我学到了什么 — one line per keyword, then the takeaway quote. */
   learned: { keyword: string; text: string }[]
   takeaway: string
-  /** 7. 1 分钟讲清楚 (paragraphs, first person). */
+  /** 8. 1 分钟讲清楚 (paragraphs, first person). */
   pitch: string[]
-  /** 8. Shown only when set. */
+  /** 9. Shown only when set. */
   links?: { github?: string; demo?: string }
   /** Sidebar / hero 「问 AI」 prefill (never auto-sent). */
   ask: string
@@ -130,6 +151,16 @@ export const tools: Tool[] = [
       caption:
         '用户问题经 ChatGPT / Agent 到 MCP Tool Router，分三路：search_knowledge 走混合检索定位 chunk；get_chunk_context 按 document_id + chunk_index 取相邻 chunk（设计中）；get_article 分页读全文。三者都读同一份知识存储，由离线流程写入。',
       legend: '虚线框 = 设计中，尚未上线',
+    },
+    playground: {
+      kind: 'mcp',
+      server: 'fengshu-knowledge（Cloudflare Workers · Streamable HTTP）',
+      intro: '通过本站后端调用已部署的知识库 MCP（白名单 + 服务端限幅 + 按 IP 限流），下面看到的是真实工具调用。',
+      examples: ['AI 会取代哪些工作', '普通人怎么应对 AI 冲击', '做题家', '信息不对称'],
+      searchTool: 'search_fengshu_knowledge',
+      articleTool: 'get_fengshu_article',
+      contextTool: 'get_chunk_context',
+      contextStatus: 'designing',
     },
     capabilities: [
       {

@@ -3,6 +3,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { DiagramSvg } from '@/components/projects/DiagramSvg'
 import { GithubIcon } from '@/components/projects/GithubIcon'
+import { McpPlayground } from '@/components/tools/McpPlayground'
 import { ToolStatusBadge } from '@/components/tools/ToolStatusBadge'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
@@ -15,13 +16,20 @@ import { cn } from '@/lib/utils'
 
 type Props = { tool: Tool; onAsk: (question: string) => void }
 
+type DetailProps = Props & {
+  ensureAuth: () => boolean
+  onAuthRequired: () => void
+  authed: boolean
+}
+
 /**
- * The shared tool-page template: 解决什么问题 → 架构图 → 核心能力 → 简历亮点 →
- * 遇到的问题 → 我学到了什么 → 1 分钟讲清楚 → GitHub / Demo (only when a link exists) → 可以问我.
- * All content comes from tools.ts. Section numbers are assigned in order; absent optional
- * sections (简历亮点, GitHub / Demo) are skipped so the index stays consecutive.
+ * The shared tool-page template: 解决什么问题 → 架构图 → 在线体验 (only when playground is set) →
+ * 核心能力 → 简历亮点 → 遇到的问题 → 我学到了什么 → 1 分钟讲清楚 → GitHub / Demo (only when a
+ * link exists) → 可以问我. All content comes from tools.ts. Section numbers are assigned in
+ * order; absent optional sections (在线体验, 简历亮点, GitHub / Demo) are skipped so the index
+ * stays consecutive.
  */
-export function ToolDetail({ tool, onAsk }: Props) {
+export function ToolDetail({ tool, onAsk, ensureAuth, onAuthRequired, authed }: DetailProps) {
   const hasResume = Boolean(tool.resumeBullets?.length)
   const hasLinks = !!(tool.links?.github || tool.links?.demo)
   let n = 0
@@ -35,6 +43,11 @@ export function ToolDetail({ tool, onAsk }: Props) {
       <Section id="architecture" index={next()} title="架构图" description="检索服务和 MCP 工具部署在 Cloudflare，Agent 通过 MCP Tool Router 按需调用。">
         <Architecture tool={tool} />
       </Section>
+      {tool.playground?.kind === 'mcp' && (
+        <Section id="playground" index={next()} title="在线体验" description={tool.playground.intro}>
+          <McpPlayground playground={tool.playground} ensureAuth={ensureAuth} onAuthRequired={onAuthRequired} authed={authed} />
+        </Section>
+      )}
       <Section id="capabilities" index={next()} title="核心能力">
         <div className="grid gap-3 sm:grid-cols-2" data-capabilities>
           {tool.capabilities.map((c, i) => (

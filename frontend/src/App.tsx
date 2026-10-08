@@ -174,7 +174,14 @@ export default function App() {
               <ProjectsPanel model={model} ensureAuth={ensureAuth} onAuthRequired={onAuthRequired} />
             </TabsContent>
             <TabsContent value="tools" forceMount className={PANEL}>
-              <ToolsPanel toolId={toolId} onSelect={setToolId} onAsk={askAbout} />
+              <ToolsPanel
+                toolId={toolId}
+                onSelect={setToolId}
+                onAsk={askAbout}
+                ensureAuth={ensureAuth}
+                onAuthRequired={onAuthRequired}
+                authed={!auth.enabled || auth.authenticated}
+              />
             </TabsContent>
           </Tabs>
         </main>

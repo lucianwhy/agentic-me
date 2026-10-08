@@ -292,3 +292,77 @@ export async function retrieveChunks(query: string): Promise<RetrieveResult> {
   if (!response.ok) throw new Error(extractErrorMessage(data, `检索失败（HTTP ${response.status}）`))
   return data as RetrieveResult
 }
+
+export type McpToolDescriptor = {
+  name: string
+  title?: string
+  description?: string
+  inputSchema?: Record<string, unknown>
+}
+
+export type McpToolsResponse = {
+  available: boolean
+  mock: boolean
+  server: string
+  chunk_context_enabled: boolean
+  tools: McpToolDescriptor[]
+  degraded: boolean
+  message?: string
+}
+
+export type McpCallResponse = {
+  tool: string
+  arguments: Record<string, unknown>
+  latency_ms: number
+  result: unknown
+  is_error: boolean
+  error_text: string | null
+  mock: boolean
+  clamped: string[]
+}
+
+/** HTTP failure from the MCP proxy. `retryAfter` is the server's `retry_after` seconds on 429. */
+export class McpCallError extends Error {
+  readonly status: number
+  readonly retryAfter?: number
+
+  constructor(message: string, status: number, retryAfter?: number) {
+    super(message)
+    this.name = 'McpCallError'
+    this.status = status
+    this.retryAfter = retryAfter
+  }
+}
+
+function mcpFailure(response: Response, data: ErrorPayload & { retry_after?: unknown }, fallback: string): McpCallError {
+  const message = response.status === 503 ? extractErrorMessage(data, '体验暂不可用') : extractErrorMessage(data, fallback)
+  const retryAfter = typeof data?.retry_after === 'number' ? data.retry_after : undefined
+  return new McpCallError(message, response.status, retryAfter)
+}
+
+/** GET /api/mcp/tools. `available: false` is a normal 200, not an error. */
+export async function fetchMcpTools(signal?: AbortSignal): Promise<McpToolsResponse> {
+  const response = await request('/api/mcp/tools', { signal })
+  if (response.status === 401) throw new AuthRequiredError()
+  const data = await readJson<ErrorPayload & { retry_after?: unknown } & Partial<McpToolsResponse>>(response)
+  if (!response.ok) throw mcpFailure(response, data, `加载 MCP 工具失败（HTTP ${response.status}）`)
+  return data as McpToolsResponse
+}
+
+/** POST /api/mcp/call. Tool `is_error` stays a 200 and is returned, not thrown. */
+export async function callMcpTool(
+  tool: string,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<McpCallResponse> {
+  const response = await request('/api/mcp/call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool, arguments: args }),
+    signal,
+  })
+  if (response.status === 401) throw new AuthRequiredError()
+  const data = await readJson<ErrorPayload & { retry_after?: unknown } & Partial<McpCallResponse>>(response)
+  if (!response.ok) throw mcpFailure(response, data, `调用失败（HTTP ${response.status}）`)
+  return data as McpCallResponse
+}

@@ -27,6 +27,7 @@ from app.auth.auth import (
     require_auth,
 )
 from app.config import config
+from app.modules import mcp_proxy
 from app.modules.job_matching import (
     analyze_job_match,
     process_job_description,
@@ -398,6 +399,64 @@ def retrieve_demo(
 
     api_logger.info(
         f"Retrieval demo for {user_code}: {len(result['chunks'])} chunks in {result['took_ms']}ms"
+    )
+    return result
+
+
+@router.get("/api/mcp/tools")
+def mcp_tools(user_code: str = Depends(require_auth)) -> dict[str, Any]:
+    """Public tool list for the knowledge-base MCP demo.
+
+    Same visitor access as /api/retrieve. When MCP_URL is unset and mock mode
+    is off this returns 200 with available=false, not 500.
+    """
+    payload = mcp_proxy.tools_status()
+    api_logger.info(
+        "MCP tools for %s available=%s degraded=%s mock=%s",
+        user_code,
+        payload["available"],
+        payload["degraded"],
+        payload["mock"],
+    )
+    return payload
+
+
+_MCP_TOOL_BODY = Body(...)
+_MCP_ARGUMENTS_BODY = Body(None)
+
+
+@router.post("/api/mcp/call")
+def mcp_call(
+    request: Request,
+    tool: str = _MCP_TOOL_BODY,
+    arguments: dict[str, Any] | None = _MCP_ARGUMENTS_BODY,
+    user_code: str = Depends(require_auth),
+) -> Any:
+    """Call one whitelisted knowledge-base tool. No login beyond /api/retrieve."""
+    if not mcp_proxy.get_settings().available:
+        return JSONResponse(status_code=503, content={"message": mcp_proxy.UNAVAILABLE_MESSAGE})
+    if config.rate_limit.enabled:
+        wait = mcp_proxy.check_rate(_client_key(request))
+        if wait > 0:
+            return JSONResponse(
+                status_code=429,
+                content={"message": "发送太频繁，请稍后再试。", "retry_after": round(wait, 1)},
+                headers={"Retry-After": str(max(1, math.ceil(wait)))},
+            )
+    try:
+        result = mcp_proxy.call_tool(tool, arguments)
+    except mcp_proxy.McpUnavailable:
+        return JSONResponse(status_code=503, content={"message": mcp_proxy.UNAVAILABLE_MESSAGE})
+    except mcp_proxy.McpBadRequest as exc:
+        return JSONResponse(status_code=exc.status, content={"message": exc.message})
+    except mcp_proxy.McpUpstreamError as exc:
+        return JSONResponse(status_code=502, content={"message": exc.message})
+    api_logger.info(
+        "MCP call user=%s tool=%s mock=%s latency_ms=%s",
+        user_code,
+        result["tool"],
+        result["mock"],
+        result["latency_ms"],
     )
     return result
 
