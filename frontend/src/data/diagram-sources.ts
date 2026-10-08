@@ -50,7 +50,7 @@ export const mermaidConfig = {
 } as const
 
 /** Chunks in the local Chroma index (CV + about_me + tool write-ups); keep in sync with projects.ts. */
-const CHUNK_COUNT = 20
+const CHUNK_COUNT = 21
 
 const CLASSES = `
   classDef default fill:#ffffff,stroke:#d4d4d8,stroke-width:1px,color:#18181b

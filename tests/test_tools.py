@@ -96,7 +96,7 @@ def test_get_chunk_context_is_documented_as_designing():
 
 def test_frontend_marks_chunk_context_as_designing():
     ts = (ROOT / "frontend/src/data/tools.ts").read_text(encoding="utf-8")
-    assert ts.count("status: 'designing'") >= 4  # capability 03, P2, P3, P4 role, resume bullet 3
+    assert ts.count("status: 'designing'") >= 5  # capability 03, P2, P3, P4 role, resume bullet 3
     sources = (ROOT / "frontend/src/data/diagram-sources.ts").read_text(encoding="utf-8")
     assert re.search(r"get_chunk_context[^\n]*设计中", sources)
 
@@ -206,6 +206,25 @@ class TestToolDataNotServed:
         if not cv.is_file():
             pytest.skip("CV PDF not present")
         assert client.get(config.cv_public_url()).status_code == 200
+
+
+def test_chunk_count_in_frontend_matches_tool_docs():
+    """CHUNK_COUNT and 向量库切块 stay in lockstep; the hint's 工具介绍 N 段 is load_tool_chunks()."""
+    sources = (ROOT / "frontend/src/data/diagram-sources.ts").read_text(encoding="utf-8")
+    projects = (ROOT / "frontend/src/data/projects.ts").read_text(encoding="utf-8")
+    m_count = re.search(r"const CHUNK_COUNT = (\d+)", sources)
+    assert m_count, "diagram-sources.ts must declare CHUNK_COUNT"
+    chunk_count = m_count.group(1)
+    m_metric = re.search(
+        r"label: '向量库切块'.*?value: '(\d+)'.*?hint: '([^']*)'",
+        projects,
+        re.DOTALL,
+    )
+    assert m_metric, "projects.ts must have a 向量库切块 metric"
+    assert m_metric.group(1) == chunk_count
+    m_tools = re.search(r"工具介绍 (\d+) 段", m_metric.group(2))
+    assert m_tools, "向量库切块 hint must include 工具介绍 N 段"
+    assert int(m_tools.group(1)) == len(tools_mod.load_tool_chunks())
 
 
 def test_frontend_tool_ids_match_knowledge_files():

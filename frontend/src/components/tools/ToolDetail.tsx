@@ -276,9 +276,12 @@ function ResumeHighlights({ bullets }: { bullets: ResumeBullet[] }) {
 
   return (
     <Card className="gap-0 overflow-hidden py-0 shadow-xs">
-      <div className="flex items-center justify-between gap-2 border-b bg-zinc-50/60 px-3 py-2 sm:px-4">
-        <span className="text-xs font-medium text-zinc-500">可直接贴进简历</span>
-        <Button type="button" size="xs" variant="outline" className="bg-white" data-copy-resume onClick={onCopyAll}>
+      <div className="flex items-center justify-between gap-2 border-b bg-zinc-50/60 px-3 py-1.5 sm:px-4 sm:py-2">
+        <span className="min-w-0 truncate text-xs font-medium text-zinc-500">
+          可直接贴进简历
+          <span className="hidden sm:inline"> · 复制时自动标注设计中部分</span>
+        </span>
+        <Button type="button" size="xs" variant="outline" className="shrink-0 bg-white" data-copy-resume onClick={onCopyAll}>
           {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
           {copied ? '已复制' : '复制全部'}
         </Button>
@@ -298,10 +301,12 @@ function ResumeBulletRow({ bullet: b, index }: { bullet: ResumeBullet; index: nu
     if (await copyText(resumeBulletClipboard(b))) mark()
   }
   return (
-    <li className="group/rb relative flex gap-3 px-3 py-3 sm:px-4 sm:py-3.5">
-      <span className="mt-px w-5 shrink-0 font-mono text-[13px] font-semibold text-zinc-300 tabular-nums">{index + 1}.</span>
+    <li className="group/rb relative flex gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3.5">
+      <span className="mt-px flex size-[18px] shrink-0 items-center justify-center rounded-md bg-zinc-100 font-mono text-[10.5px] font-medium text-zinc-600 tabular-nums sm:mt-0.5 sm:size-5 sm:text-[11px]">
+        {index + 1}
+      </span>
       <div className="min-w-0 flex-1 pr-0 md:pr-8">
-        <p className="text-sm leading-[1.7] text-zinc-800">
+        <p className="text-[13.5px] leading-relaxed text-zinc-800 sm:text-sm sm:leading-[1.7]">
           {b.text}
           {b.status && b.status !== 'done' && <ToolStatusBadge status={b.status} className="ml-1.5 align-middle" />}
         </p>
