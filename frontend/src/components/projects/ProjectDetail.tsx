@@ -26,7 +26,7 @@ export function ProjectDetail({ project, model, ensureAuth, onAuthRequired }: Pr
       <Section id="metrics" title="关键指标" description="全部来自代码配置、向量库查询或实测；悬停可查看来源。">
         <Metrics project={project} />
       </Section>
-      <Section id="pipeline" title="架构与 RAG 流程" description="离线把资料切块、向量化入库；提问时检索最相关的片段交给模型回答。">
+      <Section id="pipeline" title="架构与 RAG 流程" description="离线把资料切块、向量化入库；提问时用原问题检索最相关的片段，交给模型带引用回答。">
         <Architecture project={project} />
       </Section>
       {project.demo && (
@@ -444,7 +444,7 @@ function SourcesIllustration() {
 /* ----------------------------------------------------------------- Infra */
 
 function Infra({ project }: { project: Project }) {
-  const hops = ['浏览器', 'Nginx', 'uvicorn · FastAPI', 'Chroma（本地）+ Embedding / LLM API']
+  const hops = ['浏览器 · wanghaoyue.me', "Nginx · HTTPS（Let's Encrypt）", 'uvicorn · FastAPI', 'Chroma（本地）+ Embedding / LLM API']
   return (
     <div className="grid gap-3 lg:grid-cols-5">
       <Card className="gap-0 px-4 py-1 shadow-xs lg:col-span-3">

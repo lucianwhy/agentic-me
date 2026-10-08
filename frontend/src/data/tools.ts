@@ -1,180 +1,242 @@
 /**
- * Tools shown in the 「工具」 tab and the sidebar quick-nav. Add an entry to `tools` to list more
- * (MCP servers, IDE plugins, ...).
+ * Tools shown in the 「工具」 tab and the sidebar quick-nav. Every tool uses the same page
+ * template, so adding one (DTS 自动化、闲鱼自动化、公众号 MCP …) only means adding an entry here:
+ *
+ *   1. 解决什么问题  problem          4. 遇到的问题 → 原因 → 优化 → 学到什么  problems
+ *   2. 架构图        diagram          5. 我学到了什么                          learned + takeaway
+ *   3. 核心能力      capabilities     6. 1 分钟讲清楚                          pitch
+ *                                     7. GitHub / Demo（只在有链接时显示）       links
  *
  * `id` must match data/tools/<id>.md on the backend: that file is the knowledge-base copy of the
  * same write-up, and chat sources retrieved from it carry `tool_ids: [id]`, which highlights the
- * sidebar row. No invented numbers (article counts, latency, ...) and no links that aren't real.
+ * sidebar row. Honesty rules: no invented numbers or links, and anything not built yet carries
+ * `status: 'designing' | 'planned'` (rendered as a visible 设计中 / 规划中 badge).
  */
-import {
-  BookOpenText,
-  Boxes,
-  Braces,
-  Layers,
-  ListOrdered,
-  type LucideIcon,
-  Network,
-  ShieldCheck,
-} from 'lucide-react'
+import { BookOpenText, Gauge, Layers, ListOrdered, type LucideIcon, Network, Route, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 
-/** A term with a one-line definition (rendered as a hover card). */
-export type Term = { term: string; definition: string }
+/** Build status of a capability / problem / architecture part. Omitted = implemented. */
+export type ToolStatus = 'done' | 'designing' | 'planned'
 
-export type Lesson = {
+export const STATUS_LABEL: Record<Exclude<ToolStatus, 'done'>, string> = { designing: '设计中', planned: '规划中' }
+
+export type Keyword = { label: string; note: string }
+
+export type Capability = {
   title: string
-  /** One-line thesis shown under the title. */
-  thesis: string
-  points: string[]
-  icon: LucideIcon
-  /** Short code-ish chips (tool names, fields). */
+  detail: string
   chips?: string[]
-  terms?: Term[]
-  /** Escalating steps rendered as a ladder (soft → hard). */
-  ladder?: { label: string; note: string }[]
+  status?: ToolStatus
+  /** Which part is not built yet (shown next to the badge). */
+  statusNote?: string
 }
 
-export type CompareRow = { aspect: string; before: string; after: string }
+export type ToolProblem = {
+  title: string
+  /** 现象 / 原因 */
+  cause: string
+  /** 优化 */
+  fix: string
+  /** 学到什么 */
+  learned: string
+  /** One-line insight, e.g. "Retrieval Quality ≠ Agent Experience". */
+  insight?: string
+  icon: LucideIcon
+  status?: ToolStatus
+  statusNote?: string
+  /** Escalating steps (soft → hard) drawn as a ladder. */
+  ladder?: { label: string; note: string }[]
+  /** A flow drawn as chips with arrows; items with `status` get a badge. */
+  flow?: { label: string; status?: ToolStatus }[]
+  /** Before / after lists (e.g. schema parameters). */
+  schema?: { before: string[]; after: string[]; note?: string }
+  /** Tool → role mapping (e.g. search_knowledge = 找位置). */
+  roles?: { name: string; role: string; status?: ToolStatus }[]
+  quote?: string
+  chips?: string[]
+}
 
 export type Tool = {
   id: string
   name: string
-  /** Sidebar label (keep short). */
+  nameEn?: string
+  /** Sidebar quick-nav: label, tag (MCP / RAG / 自动化 …) and a short subtitle. */
   short: string
-  subtitle: string
-  /** Sidebar tag, e.g. "MCP" / "RAG". */
   navTag: string
+  navSubtitle: string
   icon: LucideIcon
-  tags: string[]
-  summary: string
-  /** The single most important takeaway, shown highlighted in the hero. */
-  value: { from: string; to: string }
-  /** Question the sidebar 「问 AI」 action prefills (never auto-sent). */
-  ask: string
-  diagram: { id: string; caption: string }
-  layers: { name: string; detail: string }[]
-  compare: CompareRow[]
-  lessons: Lesson[]
+  /** Hero: the one-liner, a positioning line and four keyword tags. */
+  oneLiner: string
+  positioning: string
+  keywords: Keyword[]
+  /** 1. 解决什么问题 */
+  problem: { oneLiner: string; paragraph: string; dataSource?: string }
+  /** 2. 架构图 — `id` must be a key in data/diagram-sources.ts. */
+  diagram: { id: string; caption: string; legend?: string }
+  /** 3. 核心能力 (rendered 01–04). */
+  capabilities: Capability[]
+  /** 4. 遇到的问题 → 原因 → 优化 → 学到什么 */
+  problems: ToolProblem[]
+  /** 5. 我学到了什么 — one line per keyword, then the takeaway quote. */
+  learned: { keyword: string; text: string }[]
   takeaway: string
+  /** 6. 1 分钟讲清楚 (paragraphs, first person). */
+  pitch: string[]
+  /** 7. Shown only when set. */
+  links?: { github?: string; demo?: string }
+  /** Sidebar / hero 「问 AI」 prefill (never auto-sent). */
+  ask: string
   /** 「可以问我」 prefill questions. */
   questions: string[]
 }
 
 export const tools: Tool[] = [
   {
-    id: 'fengshu-mcp',
-    name: '风叔知识库 MCP',
-    short: '风叔知识库 MCP',
-    subtitle: '博主文章 → 混合检索 → MCP 工具',
+    id: 'rag-knowledge-mcp',
+    name: 'RAG 知识库 MCP',
+    nameEn: 'RAG Knowledge MCP',
+    short: 'RAG 知识库 MCP',
     navTag: 'MCP',
+    navSubtitle: '博主文章 → 混合检索 → MCP 工具',
     icon: BookOpenText,
-    tags: ['MCP', 'Hybrid RAG', 'Cloudflare', 'Context Engineering', 'Agent 工程'],
-    summary:
-      '我把自媒体博主「风叔」的文章爬取下来，清洗、切块、做 embedding，存成向量知识库；在上面实现了向量 + 关键词 / 精确匹配的混合检索，部署在 Cloudflare 上，再包装成 MCP Server 给 Agent 直接调用。能跑之后又迭代了好几轮，专门优化「模型怎么稳定地调用它」。',
-    value: { from: '功能能不能跑', to: '系统是否适合被模型稳定调用' },
-    ask: '你做的风叔知识库 MCP 是怎么设计的？优化过程中最大的收获是什么？',
-    diagram: {
-      id: 'fengshu-mcp',
-      caption: 'Agent 通过 MCP 调用三个工具，各自进入不同的层：search 走混合检索返回 snippet，get_chunk_context 按 document_id + chunk_index 读相邻 chunk，get_article 分页读全文。',
+    oneLiner: '将文章知识库封装为 MCP Tool，让 ChatGPT / Agent 可以直接搜索观点、定位原文并按需获取上下文，而不是一次把整个知识库塞进模型。',
+    positioning: '把个人知识库做成可被 Agent 稳定调用的 RAG 服务，并围绕检索质量、上下文成本和工具接口做了一轮工程化优化。',
+    keywords: [
+      { label: 'Agent-friendly Tool Design', note: '工具名、描述和 schema 是给模型看的' },
+      { label: 'Hybrid RAG', note: '向量 + 关键词 + 精确短语检索' },
+      { label: 'Progressive Context Loading', note: '先给最少但够用的上下文' },
+      { label: 'Guardrails / Token Efficiency', note: '用服务端限制兜底 token 成本' },
+    ],
+    problem: {
+      oneLiner: '让 Agent 能在一个文章知识库里「找到位置、读够上下文」，而不是把整个知识库或整篇文章塞进模型。',
+      paragraph:
+        '我把一位自媒体博主的公众号文章爬下来做成知识库：清洗、切块、embedding，在上面做向量 + 关键词 + 精确短语的混合检索，部署在 Cloudflare 上，再包装成 MCP Server，让 ChatGPT / Agent 直接调用。第一版能搜到内容，但真正当作 Agent Tool 用起来以后，问题变成了：工具接口是不是适合模型调用、每次调用要花多少上下文。',
+      dataSource: '数据来源：一位自媒体博主的公众号文章',
     },
-    layers: [
-      { name: '数据层', detail: '原始文章 / chunk / metadata / embedding' },
-      { name: '检索层', detail: 'vector + keyword / exact → hybrid → 文档去重 / rerank' },
-      { name: '上下文层', detail: 'snippet → chunk context → article 分页' },
-      { name: 'MCP 工具层', detail: 'search_fengshu_knowledge · get_chunk_context · get_article' },
-      { name: 'Agent 层', detail: '根据问题决定调用哪一层，再生成回答' },
-    ],
-    compare: [
-      { aspect: '工具命名', before: '自动生成的 mcp______search，模型很难判断什么时候该用', after: 'search_fengshu_knowledge 等语义化命名，名字本身就是路由信号' },
-      { aspect: '工具描述', before: '只是普通文档', after: '写进调用策略：普通问答优先 get_chunk_context，不要直接 get_article' },
-      { aspect: '参数 schema', before: 'retrieval_type / fusion_method / threshold / cache 全部暴露', after: '只暴露 query / top_k / mode / source_scope，底层策略服务端决定' },
-      { aspect: '上下文获取', before: 'search → get_article 整篇塞回：2 万字过滤成 800 字，又把 1.9 万字拿了回来', after: 'Snippet → Chunk Context → Article → 分页全文，逐级展开' },
-      { aspect: '返回体积', before: '一次返回的结果太大', after: '服务端单次最多 6000～10000 字符（max_chars）' },
-      { aspect: '读全文', before: '一次性返回整篇', after: 'offset / next_offset / has_more 分页，状态由服务端推进' },
-      { aspect: '约束方式', before: '主要靠 prompt 提醒', after: 'schema + 服务端上限 + 分页组成硬约束' },
-    ],
-    lessons: [
+    diagram: {
+      id: 'rag-knowledge-mcp',
+      caption:
+        '用户问题经 ChatGPT / Agent 到 MCP Tool Router，分三路：search_knowledge 走混合检索定位 chunk；get_chunk_context 按 document_id + chunk_index 取相邻 chunk（设计中）；get_article 分页读全文。三者都读同一份知识存储，由离线流程写入。',
+      legend: '虚线框 = 设计中，尚未上线',
+    },
+    capabilities: [
       {
-        title: 'MCP 接口是给 Agent 用的',
-        thesis: '以前做 API 能调通就行；MCP 多了一层：模型要先理解这个工具什么时候该用。',
-        icon: Braces,
-        points: [
-          '工具名就是路由信号：search_fengshu_knowledge 比 mcp______search 好，不只是好看。',
-          'Tool description 参与 Agent 决策。写明「普通问答优先 get_chunk_context，不要直接 get_article」，本质是在做 Agent policy design。',
-          'schema 只暴露 query / top_k / mode / source_scope；retrieval_type / fusion_method / threshold / cache 由服务端决定。参数越多，通用 Agent 越容易乱调，这是抽象层设计。',
-        ],
-        chips: ['search_fengshu_knowledge', 'query', 'top_k', 'mode', 'source_scope'],
+        title: '端到端 RAG → MCP 链路',
+        detail: '打通 Document → Chunk → Embedding → Retrieval → MCP Tool → Agent 链路，用 document_id / chunk_id 建立父文档与片段的映射。',
+        chips: ['document_id', 'chunk_id', 'chunk_index'],
       },
       {
-        title: 'RAG ≠ 向量搜一下塞原文',
-        thesis: 'query → 找 chunk → 读邻近 chunk → 必要时再读文章。',
-        icon: Network,
-        points: [
-          '向量检索负责回答「哪里可能相关」，而不是负责把完整上下文找回来。',
-          '命中 chunk_15 后，前后文用 document_id + chunk_index 读取 chunk_14 / 15 / 16，而不是再做一次向量搜索。',
-          '这套对象模型以后做任何知识库都能复用。',
-        ],
-        terms: [
-          { term: 'document_id', definition: '父文档，一篇文章一个。' },
-          { term: 'chunk_id', definition: '检索单元，向量检索命中的就是它。' },
-          { term: 'chunk_index', definition: '在原文里的顺序，用来取前后相邻的 chunk。' },
-          { term: 'embedding', definition: '负责语义召回：找到「哪里可能相关」。' },
-          { term: '上下文扩展', definition: '负责恢复局部语境：按顺序读回命中位置的前后文。' },
-        ],
+        title: 'Agent-friendly 接口',
+        detail: '把底层检索参数抽象成 semantic / exact / balanced 三种高层 mode，Agent 只需要表达意图，具体检索策略由服务端决定。',
+        chips: ['semantic', 'exact', 'balanced'],
       },
       {
         title: '渐进式上下文加载',
-        thesis: '先给模型最少但够用的信息，不够再逐级展开。这属于 Context Engineering。',
-        icon: Layers,
-        points: [
-          '以前是 search → get_article → 整篇塞进去；现在是 Snippet → Chunk Context → Article → Paginated Full Article。',
-          '价值不只是省 token，还能降低噪声。',
-          '上下文不是越多越好：2 万字里只有 1000 字相关，剩下的反而可能拉低模型的判断质量。',
-        ],
-        chips: ['Snippet', 'Chunk Context', 'Article', 'Paginated Full Article'],
+        detail: 'Snippet → Chunk Context → Full Article：先返回片段，不够再逐级展开，避免一上来就读全文。',
+        chips: ['Snippet', 'Chunk Context', 'Full Article'],
+        status: 'designing',
+        statusNote: 'Chunk Context（相邻 chunk 扩展）设计中；Snippet 与全文分页已上线',
       },
       {
-        title: 'Prompt 是软约束，接口和服务端限制才是硬约束',
-        thesis: '遇到「模型千万不要做某事」，先想能不能从系统设计上把错误空间缩小。',
-        icon: ShieldCheck,
-        points: [
-          '约束逐级加硬，最后即使 Agent 做了一个不理想的调用，也不会一下把两三万字打回来。',
-          '优先用 schema、权限、状态机、服务端限制兜底，而不是只多写一句 prompt。',
-        ],
-        ladder: [
-          { label: 'Prompt', note: '「不要随便读全文」' },
-          { label: 'Tool description', note: '普通问答优先 chunk context' },
-          { label: '服务端上限', note: '单次 6000～10000 字符' },
-          { label: '分页', note: 'offset → next_offset → has_more' },
-        ],
-      },
-      {
-        title: '分页、状态与可恢复调用',
-        thesis: '把状态推进权交给服务端：模型永远用服务端返回的 next_offset。',
-        icon: ListOrdered,
-        points: [
-          '模型不用自己算 6000 + 6000 = 12000。',
-          '即使文本清洗、Unicode、换行规则变了，也不会因为客户端自己算位置而漏字或重复。',
-          '同一个思路到处都是：分页 API、游标 cursor、消息消费 offset、数据库分页、文件流式读取。',
-        ],
-        chips: ['offset', 'next_offset', 'has_more', 'total_chars'],
-      },
-      {
-        title: '分层架构：代码负责确定性，AI 负责不确定性',
-        thesis: '数据层 → 检索层 → 上下文层 → MCP 工具层 → Agent 层。',
-        icon: Boxes,
-        points: [
-          '代码保证：chunk 顺序、分页、文档去重、max_chars、权限判断。',
-          'AI / reranker 判断「这几个 chunk 哪个最有价值」；LLM 负责「文章观点怎么解释」。',
-          '最终是 Retrieval Service + MCP Adapter + Agent 的架构，而不只是「做了个向量数据库」。',
-        ],
-        chips: ['Retrieval Service', 'MCP Adapter', 'Agent'],
+        title: '混合检索与分页',
+        detail: '向量 / 关键词 / 精确短语检索融合，做文档级去重；全文用 offset / next_offset 分页读取。',
+        chips: ['Vector', 'Keyword', 'Exact Phrase', 'Dedup', 'offset / next_offset'],
       },
     ],
+    problems: [
+      {
+        title: 'RAG 搜到了正确内容，但 Token 爆了',
+        icon: Gauge,
+        insight: 'Retrieval Quality ≠ Agent Experience',
+        cause: '检索本身是对的，但旧版的典型调用是 search → get_article，把整篇文章塞回模型：RAG 好不容易把两万字过滤成几百字，又把剩下的全文拿了回来，结果太大。',
+        fix: '把 search_knowledge 的职责收窄为「找位置」：只返回片段和定位信息（document_id / chunk_id），需要更多上下文时再由别的工具按需读取。',
+        learned: '检索质量好不等于 Agent 用起来好。工具返回什么、返回多少，本身就是设计的一部分。',
+      },
+      {
+        title: '为什么不能命中 Chunk 后直接读整篇',
+        icon: Layers,
+        status: 'designing',
+        statusNote: 'Neighbor Chunks 这一级设计中',
+        cause: '命中一个 chunk 后直接 get_article，等于跳过了中间所有层级：大部分内容和问题无关，既浪费 token，又引入噪声。',
+        fix: '设计成 Snippet → Target Chunk → Neighbor Chunks → Full Article 逐级展开：先给最少但够用的信息，不够再往下读。两端已上线，中间的 Neighbor Chunks 还在设计中。',
+        learned: '上下文不是越多越好，无关内容反而可能拉低模型的判断质量。这就是 Context Engineering。',
+        flow: [{ label: 'Snippet' }, { label: 'Target Chunk' }, { label: 'Neighbor Chunks', status: 'designing' }, { label: 'Full Article' }],
+      },
+      {
+        title: '为什么上下文不能再用向量搜索',
+        icon: Network,
+        insight: 'Retrieval vs Context Reconstruction',
+        status: 'designing',
+        statusNote: 'get_chunk_context 设计中',
+        cause: '向量检索回答的是「哪里可能相关」，不负责把完整语境找回来；用它补上下文，拿回来的可能是别处语义相近的片段。',
+        fix: '设计方案：命中 chunk_15 后，用 document_id + chunk_index 直接读取 chunk_14 / 15 / 16，按原文顺序恢复局部语境，而不是再搜一次。',
+        learned: '检索（找位置）和上下文重建（恢复语境）是两件事：document_id 是父文档，chunk_id 是检索单元，chunk_index 是原文顺序。',
+        chips: ['chunk_14', 'chunk_15', 'chunk_16'],
+      },
+      {
+        title: '模型为什么总喜欢调全文接口',
+        icon: Route,
+        insight: 'Tool Description = Agent Routing Prompt',
+        cause: '旧工具名是自动生成的 mcp______search，描述也只是普通文档。模型分不清什么时候该用哪个工具，最省事的选择就是直接读全文。',
+        fix: '工具改用语义化命名，并在 description 里写清楚分工和使用顺序。',
+        learned: '工具名和描述是 Agent 路由提示词的一部分：名字本身就是路由信号。',
+        roles: [
+          { name: 'search_knowledge', role: '找位置' },
+          { name: 'get_chunk_context', role: '局部上下文', status: 'designing' },
+          { name: 'get_article', role: '文章级读取' },
+        ],
+      },
+      {
+        title: '软约束 vs 硬约束',
+        icon: ShieldCheck,
+        cause: '只在 prompt 里写「不要随便读全文」，模型还是可能一次把两三万字拉回来。',
+        fix: '约束逐级加硬：Prompt → Tool Description → 服务端单次返回上限（max_chars）→ 分页。即使 Agent 做了一个不理想的调用，也不会一次拿回整篇。',
+        learned: 'Prompt 是软约束，接口和服务端限制才是硬约束。遇到「模型千万不要做某事」，先想能不能用 schema、权限、状态机、服务端限制缩小错误空间。',
+        ladder: [
+          { label: 'Prompt', note: '「不要随便读全文」' },
+          { label: 'Tool Description', note: '写明使用顺序' },
+          { label: 'max_chars', note: '服务端单次上限' },
+          { label: '分页', note: 'offset → next_offset' },
+        ],
+      },
+      {
+        title: '分页要用服务端的 next_offset',
+        icon: ListOrdered,
+        cause: '如果让模型自己 offset += max_chars，一旦文本清洗、Unicode 或换行规则变化，就会重复或漏掉内容。',
+        fix: '每次返回 next_offset / has_more，模型永远使用服务端给的 next_offset，状态推进由服务端负责。',
+        learned: '把状态推进权交给服务端。分页 API、游标 cursor、消息消费 offset、数据库分页，本质都是同一个思路。',
+        chips: ['offset', 'next_offset', 'has_more'],
+      },
+      {
+        title: 'Tool Schema 抽象',
+        icon: SlidersHorizontal,
+        cause: '早期把底层参数都暴露给 Agent。参数越多，通用 Agent 越容易乱调。',
+        fix: '外层只保留高层语义参数；balanced 具体是不是「向量 + 关键词 + RRF」由服务端决定，Agent 不需要知道。',
+        learned: '这是典型的抽象层设计：Agent 表达意图，服务端负责策略。',
+        schema: {
+          before: ['retrieval_type', 'fusion_method', 'threshold', 'context_expansion', 'rerank', 'metadata_only', '…'],
+          after: ['query', 'top_k', 'mode: semantic / exact / balanced', 'source_scope', 'date_range'],
+        },
+        quote: '给模型更多参数并不一定让 Agent 更强，有时候减少可选参数反而能提升稳定性。',
+      },
+    ],
+    learned: [
+      { keyword: 'Agent-friendly Tool Design', text: '工具名、描述、schema 都是给模型看的路由信号；参数越少越稳定。' },
+      { keyword: 'Hybrid RAG', text: '检索负责「找位置」：向量、关键词、精确短语融合，再做文档级去重。' },
+      { keyword: 'Progressive Context Loading', text: '先给最少但够用的上下文，不够再逐级展开；上下文不是越多越好。' },
+      { keyword: 'Guardrails / Token Efficiency', text: 'Prompt 是软约束，max_chars、分页和服务端 next_offset 才是硬约束。' },
+    ],
     takeaway: '不要只问功能有没有实现，要看信息怎么流、模型看到什么、模型能犯什么错、哪些交给代码保证、哪些留给 AI 判断。',
+    pitch: [
+      '最开始的版本很直接：把博主的文章爬下来，切块、embedding，做成向量知识库，再包装成 MCP，让 ChatGPT 能搜。',
+      '真正作为 Agent Tool 用起来以后，我发现问题不是能不能搜到，而是接口适不适合模型调用：工具名 mcp______search 没有语义，模型分不清什么时候用哪个工具；搜到之后常常直接调全文接口，把整篇文章塞回上下文，token 一下就爆了。',
+      '所以我重新拆了链路：search_knowledge 只负责找位置，get_article 用 offset / next_offset 分页读全文，再加服务端的 max_chars 上限当硬约束；中间按 document_id + chunk_index 读相邻 chunk 的 get_chunk_context 目前还在设计中。Schema 也做了简化，只暴露 query、top_k、mode 这类高层参数，具体检索策略交给服务端。',
+      '这一轮让我真正理解了 Tool Routing、Context Engineering、Token 成本和硬约束设计：不只是功能能不能跑，而是这个系统适不适合被模型稳定调用。',
+    ],
+    ask: '你做的 RAG 知识库 MCP 解决了什么问题？优化过程中最大的收获是什么？',
     questions: [
-      '你的 MCP 怎么防止模型读整篇文章？',
-      '为什么命中 chunk 后用 document_id + chunk_index 取上下文，而不是再搜一次？',
-      'MCP 工具的 schema 为什么只暴露 query / top_k / mode / source_scope？',
+      '你做的 RAG 知识库 MCP 怎么防止模型读整篇文章？',
+      '为什么命中 chunk 后要用 document_id + chunk_index 取上下文，而不是再搜一次？',
+      'RAG 知识库 MCP 的 schema 为什么只暴露 query / top_k / mode 这些参数？',
     ],
   },
 ]

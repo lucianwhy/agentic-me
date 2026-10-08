@@ -28,7 +28,7 @@ export function ToolsNav({ onOpen, onAsk }: Props) {
               onClick={() => onOpen(tool.id)}
               className="flex min-w-0 flex-1 items-center gap-2.5 rounded-l-lg py-2 pl-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-950/20"
               aria-label={`查看工具：${tool.name}`}
-              title={tool.subtitle}
+              title={tool.navSubtitle}
             >
               <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-white">
                 <Icon className="size-3.5" aria-hidden="true" />
@@ -38,7 +38,7 @@ export function ToolsNav({ onOpen, onAsk }: Props) {
                   <span className="truncate text-[13px] font-semibold text-zinc-900">{tool.short}</span>
                   <span className="shrink-0 rounded border border-zinc-200 bg-zinc-50 px-1 font-mono text-[10px] leading-4 text-zinc-600">{tool.navTag}</span>
                 </span>
-                <span className="block truncate text-[11px] text-zinc-500">{tool.subtitle}</span>
+                <span className="block truncate text-[11px] text-zinc-500">{tool.navSubtitle}</span>
               </span>
               <ChevronRight className="size-3.5 shrink-0 text-zinc-300 transition-transform group-hover/tool:translate-x-0.5 group-hover/tool:text-zinc-500" aria-hidden="true" />
             </button>

@@ -7,7 +7,7 @@
 ## 环境要求
 
 - Python 3.11+
-- 约 2GB 内存即可（京东云等轻量 VPS 可用）
+- 约 2GB 内存即可（阿里云 ECS 等轻量云服务器可用）
 - 对话前需要 OpenAI 兼容的 LLM / Embedding 接口（官方 OpenAI，或 DeepSeek 等）
 
 ## 本地启动

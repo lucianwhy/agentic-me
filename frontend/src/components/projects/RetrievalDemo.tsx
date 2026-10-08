@@ -240,7 +240,7 @@ function AnswerBlock({ state, onGenerate }: { state: AnswerState; onGenerate: ()
     return (
       <div className="flex flex-col items-start justify-between gap-2 rounded-lg border border-dashed p-3 sm:flex-row sm:items-center">
         <p className="text-xs text-zinc-500">
-          检索完成。真实对话会先结合上下文改写问题再检索，命中片段可能略有不同；生成回答约需 13–20 秒。
+          检索完成。真实对话用同样的原问题检索，再把这些片段和最近几条对话交给模型生成带 [n] 引用的回答。
         </p>
         <Button type="button" size="sm" variant="secondary" onClick={onGenerate} className="shrink-0">
           <Sparkles />
@@ -264,7 +264,7 @@ function AnswerBlock({ state, onGenerate }: { state: AnswerState; onGenerate: ()
         {state.kind === 'loading' && (
           <span className="inline-flex items-center gap-1">
             <Spinner className="size-3" />
-            {state.text ? '生成中…' : '改写查询并检索中…'}
+            {state.text ? '生成中…' : '检索中…'}
           </span>
         )}
         {state.kind === 'done' && <span className="font-mono tabular-nums">{(state.ms / 1000).toFixed(1)} s</span>}

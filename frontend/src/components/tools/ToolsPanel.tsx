@@ -60,7 +60,7 @@ export function ToolsPanel({ toolId, onSelect, onAsk }: Props) {
               )}
             </BreadcrumbList>
           </Breadcrumb>
-          {!tool && <p className="text-sm text-zinc-500">我自己做的工具：架构、优化过程和踩过的坑。</p>}
+          {!tool && <p className="text-sm text-zinc-500">我自己做的工具：解决什么问题、架构、遇到的问题和学到的东西。</p>}
         </div>
       </div>
       {/* key: every open starts at the top of that tool's detail */}
@@ -101,17 +101,17 @@ function ToolCard({ tool, onOpen }: { tool: Tool; onOpen: (id: string) => void }
           </ItemMedia>
           <ItemContent>
             <ItemTitle className="text-base">{tool.name}</ItemTitle>
-            <ItemDescription>{tool.subtitle}</ItemDescription>
+            <ItemDescription>{tool.navSubtitle}</ItemDescription>
           </ItemContent>
           <ItemActions className="self-center">
             <ArrowRight className="size-4 text-zinc-400 transition-transform group-hover/item:translate-x-0.5" />
           </ItemActions>
           <ItemFooter className="flex-col items-stretch gap-3">
-            <p className="line-clamp-3 text-xs leading-relaxed text-zinc-500">{tool.summary}</p>
+            <p className="line-clamp-3 text-xs leading-relaxed text-zinc-500">{tool.oneLiner}</p>
             <div className="flex flex-wrap gap-1">
-              {tool.tags.map((t) => (
-                <Badge key={t} variant="secondary" className="font-normal">
-                  {t}
+              {tool.keywords.map((k) => (
+                <Badge key={k.label} variant="secondary" className="font-normal">
+                  {k.label}
                 </Badge>
               ))}
             </div>

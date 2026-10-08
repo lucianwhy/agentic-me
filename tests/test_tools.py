@@ -74,12 +74,31 @@ def test_long_section_is_split():
 
 def test_real_tool_doc_yields_several_chunks():
     ids = [t.id for t in load_tools()]
-    assert "fengshu-mcp" in ids
-    chunks = [c for c in tools_mod.load_tool_chunks() if c.metadata["tool_id"] == "fengshu-mcp"]
+    assert "rag-knowledge-mcp" in ids
+    chunks = [c for c in tools_mod.load_tool_chunks() if c.metadata["tool_id"] == "rag-knowledge-mcp"]
     assert len(chunks) >= 6
     text = "\n".join(c.page_content for c in chunks)
-    for needle in ("search_fengshu_knowledge", "get_chunk_context", "next_offset", "document_id", "Cloudflare"):
+    for needle in ("search_knowledge", "get_chunk_context", "next_offset", "document_id", "Cloudflare"):
         assert needle in text
+    assert "风叔" not in chunks[0].page_content.split("\n", 1)[0]  # name is not the blogger's
+    assert all(c.page_content.startswith("【工具：RAG 知识库 MCP · ") for c in chunks)
+
+
+def test_get_chunk_context_is_documented_as_designing():
+    """The KB must never let the chat claim get_chunk_context is implemented."""
+    text = "\n".join(c.page_content for c in tools_mod.load_tool_chunks() if c.metadata["tool_id"] == "rag-knowledge-mcp")
+    status = next(c.page_content for c in tools_mod.load_tool_chunks() if c.metadata["section"].startswith("当前实现状态"))
+    assert "get_chunk_context" in status and "设计中" in status and "尚未实现" in status
+    for line in text.splitlines():
+        if "get_chunk_context" in line and "已实现" in line:
+            assert "设计中" in line or "尚未实现" in line, line
+
+
+def test_frontend_marks_chunk_context_as_designing():
+    ts = (ROOT / "frontend/src/data/tools.ts").read_text(encoding="utf-8")
+    assert ts.count("status: 'designing'") >= 4  # capability 03, P2, P3, P4 role
+    sources = (ROOT / "frontend/src/data/diagram-sources.ts").read_text(encoding="utf-8")
+    assert re.search(r"get_chunk_context[^\n]*设计中", sources)
 
 
 def test_tool_ids_from_metadata_and_mentions(demo_tools_dir):
@@ -107,11 +126,11 @@ def test_tool_chunks_do_not_map_to_resume_entries():
 def test_serialized_sources_carry_tool_ids():
     out = _serialize_sources(
         [
-            Document(page_content="【工具：风叔知识库 MCP · 经验】分页", metadata={"source": "tool", "tool_id": "fengshu-mcp", "title": "风叔知识库 MCP"}),
+            Document(page_content="【工具：RAG 知识库 MCP · 经验】分页", metadata={"source": "tool", "tool_id": "rag-knowledge-mcp", "title": "RAG 知识库 MCP"}),
             Document(page_content="完全无关的一段内容", metadata={"source": "about_me"}),
         ]
     )
-    assert out[0]["tool_ids"] == ["fengshu-mcp"] and out[0]["resume_entry_ids"] == []
+    assert out[0]["tool_ids"] == ["rag-knowledge-mcp"] and out[0]["resume_entry_ids"] == []
     assert out[1]["tool_ids"] == []
 
 
@@ -142,14 +161,14 @@ class TestToolDataNotServed:
     @pytest.mark.parametrize(
         "path",
         [
-            "/data/tools/fengshu-mcp.md",
+            "/data/tools/rag-knowledge-mcp.md",
             "/data/tools/",
             "/data/tools",
-            "/data/tools/../tools/fengshu-mcp.md",
-            "/data/%2e%2e/data/tools/fengshu-mcp.md",
-            "/data/tools%2Ffengshu-mcp.md",
-            "/static/../data/tools/fengshu-mcp.md",
-            "/assets/../data/tools/fengshu-mcp.md",
+            "/data/tools/../tools/rag-knowledge-mcp.md",
+            "/data/%2e%2e/data/tools/rag-knowledge-mcp.md",
+            "/data/tools%2Frag-knowledge-mcp.md",
+            "/static/../data/tools/rag-knowledge-mcp.md",
+            "/assets/../data/tools/rag-knowledge-mcp.md",
         ],
     )
     def test_get_and_head_404(self, path):
@@ -157,8 +176,8 @@ class TestToolDataNotServed:
         assert client.head(path).status_code == 404
 
     def test_body_never_leaks(self):
-        secret_line = "search_fengshu_knowledge"
-        for path in ("/data/tools/fengshu-mcp.md", "/data/fengshu-mcp.md"):
+        secret_line = "mcp______search"
+        for path in ("/data/tools/rag-knowledge-mcp.md", "/data/rag-knowledge-mcp.md"):
             assert secret_line not in client.get(path).text
 
     def test_cv_still_served(self):

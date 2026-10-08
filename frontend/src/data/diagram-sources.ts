@@ -49,11 +49,15 @@ export const mermaidConfig = {
   },
 } as const
 
+/** Chunks in the local Chroma index (CV + about_me + tool write-ups); keep in sync with projects.ts. */
+const CHUNK_COUNT = 20
+
 const CLASSES = `
   classDef default fill:#ffffff,stroke:#d4d4d8,stroke-width:1px,color:#18181b
   classDef src fill:#f4f4f5,stroke:#d4d4d8,stroke-width:1px,color:#18181b
   classDef store fill:#ffffff,stroke:#71717a,stroke-width:1px,color:#18181b
   classDef accent fill:#18181b,stroke:#18181b,stroke-width:1px,color:#fafafa
+  classDef plan fill:#fafafa,stroke:#a1a1aa,stroke-width:1px,stroke-dasharray:4 3,color:#71717a
   linkStyle default stroke:#a1a1aa,stroke-width:1px`
 
 function rag(sub: 'LR' | 'TB') {
@@ -62,116 +66,162 @@ function rag(sub: 'LR' | 'TB') {
     direction ${sub}
     SRC1("简历 PDF<br/>2 页"):::src
     SRC2("关于我<br/>about_me.md"):::src
-    SPLIT("切块<br/>1000 / 200")
+    SRC3("工具介绍<br/>data/tools/*.md"):::src
+    SPLIT("切块<br/>1000 / 200 · 工具按章节")
     EMB1("火山引擎多模态 Embedding<br/>2048 维")
-    DB[("Chroma<br/>7 段")]:::store
+    DB[("Chroma<br/>${CHUNK_COUNT} 段")]:::store
     SRC1 --> SPLIT
     SRC2 --> SPLIT
+    SRC3 --> SPLIT
     SPLIT --> EMB1 -->|写入| DB
   end
   subgraph query["在线问答 · 每次提问"]
     direction ${sub}
-    Q("访客提问"):::src
-    RW("历史感知改写<br/>LLM 生成检索查询")
+    Q("访客提问<br/>原问题直接检索"):::src
+    HIST("最近 6 条消息（约 3 轮）<br/>浏览器随请求带上"):::src
     EMB2("Embedding<br/>查询向量")
-    TOPK("Chroma 检索<br/>Top-4")
-    LLM("LLM 流式生成<br/>stuff documents"):::accent
-    UI("前端<br/>回答 + 参考来源"):::src
-    Q --> RW --> EMB2 --> TOPK --> LLM -->|SSE| UI
+    TOPK("Chroma 检索<br/>Top-4 · 编号 [1]–[4]")
+    LLM("LLM 流式生成<br/>模型列表由后台管理"):::accent
+    UI("前端<br/>句内引用 [n] + 参考来源"):::src
+    Q --> EMB2 --> TOPK --> LLM -->|SSE| UI
+    HIST --> LLM
   end
   build -.->|检索向量库| query${CLASSES}`
 }
 
 /**
  * FastAPI calls both external APIs over HTTPS (one edge from the FastAPI node to the 外部 API
- * cluster keeps the routing clean); Chroma is a local dependency of FastAPI.
+ * cluster keeps the routing clean); Chroma and the admin-managed model list are local.
  */
 function deploy(direction: 'LR' | 'TD') {
   return `flowchart ${direction}
-  U("浏览器"):::src
+  U("浏览器<br/>wanghaoyue.me"):::src
   subgraph ext["外部 API"]
     direction ${direction === 'LR' ? 'TB' : 'LR'}
     LLMAPI("LLM · nuoapi<br/>OpenAI 兼容"):::src
     ARK("火山引擎 Ark<br/>多模态 Embedding"):::src
   end
-  subgraph server["京东云轻量服务器 · Ubuntu"]
-    NG("Nginx<br/>反向代理")
+  subgraph server["阿里云 ECS"]
+    NG("Nginx<br/>HTTPS · Let's Encrypt")
     API("uvicorn · FastAPI<br/>systemd 守护"):::accent
     VDB[("Chroma<br/>本地持久化")]:::store
+    MODELS[("模型列表<br/>models.json · 后台管理")]:::store
   end
-  U -->|HTTP| NG --> API
+  U -->|HTTPS| NG --> API
   API -->|HTTPS| ext
-  API -->|本地| VDB${CLASSES}`
+  API -->|本地| VDB
+  API -->|本地| MODELS${CLASSES}`
 }
 
 /**
- * 风叔知识库 MCP, top to bottom: Agent ⇄ Cloudflare [MCP 工具层 → 检索层 → 上下文层] plus the
- * offline pipeline. Wide lays each layer out as a row, narrow as a column.
- * Edges only connect whole subgraphs, so Mermaid keeps each layer's own direction (a node-level
- * edge across a subgraph makes dagre ignore `direction`); each tool's label names the layer it
- * reads. The deployment boundary stays generic ("Cloudflare 部署").
+ * RAG 知识库 MCP. Wide follows the call structure: 用户问题 → ChatGPT / Agent → MCP Tool Router,
+ * which branches to search_knowledge → Retrieval Layer, get_chunk_context → Context Layer (设计中,
+ * dashed) and get_article → Document Layer; all three read Knowledge Storage, which the offline
+ * pipeline fills. Narrow stacks the three tool lanes in the order an Agent escalates through them
+ * (search → neighbours → full article) so it fits a phone without shrinking the text.
+ *
+ * Cross-layer edges connect whole subgraphs so each layer keeps its own direction (a node-level
+ * edge across a subgraph makes dagre ignore `direction`). The offline pipeline is attached with
+ * a reversed edge (storage <-.- offline) so dagre ranks it last, under the storage layer.
+ * The deployment boundary stays generic ("Cloudflare 部署"); storage products are unconfirmed.
  */
-function fengshuMcp(wide: boolean) {
+function ragMcp(wide: boolean) {
   const row = wide ? 'LR' : 'TB'
-  // The three tools have no edges, so they line up ACROSS the subgraph's direction: TB puts
-  // them in a row (wide), LR stacks them (narrow). (Invisible ~~~ links would be drawn: the
-  // shared `linkStyle default` gives every link a stroke.)
-  const toolDir = wide ? 'TB' : 'LR'
-  const agent = `
-  subgraph agentL["Agent 层"]
-    direction LR
-    AG("Agent<br/>按问题决定调用哪一层"):::src
-    ANS("生成回答"):::src
-    AG --> ANS
-  end`
   const offline = `
   subgraph offline["离线建库"]
     direction ${row}
     CRAWL("爬取博主文章"):::src
     CLEAN("清洗")
-    CHUNK("切块<br/>document_id · chunk_id<br/>chunk_index + metadata")
+    CHUNK("切块")
     EMB("Embedding")
-    KB[("知识库<br/>chunk · metadata · 向量")]:::store
-    CRAWL --> CLEAN --> CHUNK --> EMB --> KB
+    SAVE("写入存储")
+    CRAWL --> CLEAN --> CHUNK --> EMB --> SAVE
   end`
-  const cf = `
+  const storage = `
+  subgraph store["Knowledge Storage"]
+    direction LR
+    D[("Document")]:::store
+    C[("Chunks")]:::store
+    V[("Vector")]:::store
+    M[("Metadata<br/>title · date")]:::store
+    D --> C --> V
+  end`
+  if (wide) {
+    return `flowchart TB
+  subgraph caller["调用方"]
+    direction LR
+    Q("用户问题"):::src
+    AG("ChatGPT / Agent"):::src
+    Q --> AG
+  end
   subgraph cf["Cloudflare 部署"]
     direction TB
-    subgraph tools["MCP 工具层"]
-      direction ${toolDir}
-      T1("search_fengshu_knowledge<br/>混合检索 → snippet"):::accent
-      T2("get_chunk_context<br/>读相邻 chunk"):::accent
-      T3("get_article<br/>分页读全文"):::accent
+    ROUTER("MCP Tool Router"):::accent
+    T1("search_knowledge"):::accent
+    T2("get_chunk_context<br/>设计中"):::plan
+    T3("get_article"):::accent
+    ROUTER --> T1
+    ROUTER -.-> T2
+    ROUTER --> T3
+    subgraph ret["Retrieval Layer"]
+      direction LR
+      VS("Vector Search")
+      KS("Keyword Search")
+      EX("Exact Phrase Search")
+      FUSE("Hybrid / Fusion / Dedup")
+      CH("Chunk<br/>document_id · chunk_id<br/>chunk_index")
+      VS --> FUSE
+      KS --> FUSE
+      EX --> FUSE
+      FUSE --> CH
     end
-    subgraph retrieval["检索层"]
-      direction ${row}
-      VEC("向量检索")
-      KW("关键词 / 精确匹配")
-      FUSE("混合融合 hybrid")
-      RR("文档去重 · rerank")
-      VEC --> FUSE
-      KW --> FUSE
-      FUSE --> RR
+    subgraph ctx["Context Layer · 设计中"]
+      direction LR
+      NB("相邻 chunk<br/>document_id + chunk_index"):::plan
     end
-    subgraph context["上下文层 · 渐进式加载"]
-      direction ${row}
-      SN("Snippet")
-      CC("Chunk Context<br/>document_id + chunk_index")
-      AR("Article")
-      PG("分页全文<br/>offset · next_offset · has_more")
-      SN -->|不够再展开| CC --> AR --> PG
+    subgraph doc["Document Layer"]
+      direction LR
+      PG("全文分页<br/>offset → next_offset")
     end
-    tools --> retrieval -->|命中 chunk| context
-  end`
-  // The offline pipeline sits under the context layer (a row when wide, a column when narrow),
-  // pinned there by a hidden link (link #14, counting from 0 in definition order; its stroke is
-  // cleared because `linkStyle default` would draw it) and feeding the retrieval layer through a
-  // reversed dotted edge, so dagre ranks it last instead of squeezing it in beside the layers.
-  return `flowchart TB${agent}${cf}${offline}
-  agentL <-->|MCP 调用| tools
-  context ~~~ offline
-  retrieval <-.-|供检索| offline${CLASSES}
-  linkStyle 14 stroke:transparent,stroke-width:0`
+    T1 --> ret
+    T2 -.-> ctx
+    T3 --> doc
+  end${storage}${offline}
+  caller -->|MCP 调用| ROUTER
+  ret --> store
+  ctx -.-> store
+  doc --> store
+  store <-.-|写入| offline${CLASSES}`
+  }
+  return `flowchart TB
+  Q("用户问题"):::src
+  AG("ChatGPT / Agent"):::src
+  Q --> AG
+  subgraph cf["Cloudflare 部署"]
+    direction TB
+    ROUTER("MCP Tool Router"):::accent
+    subgraph l1["search_knowledge → Retrieval Layer"]
+      direction TB
+      SRCH("Vector / Keyword /<br/>Exact Phrase Search")
+      FUSE("Hybrid / Fusion / Dedup")
+      CH("Chunk<br/>document_id · chunk_id<br/>chunk_index")
+      SRCH --> FUSE --> CH
+    end
+    subgraph l2["get_chunk_context → Context Layer"]
+      direction TB
+      NB("相邻 chunk<br/>document_id + chunk_index<br/>设计中"):::plan
+    end
+    subgraph l3["get_article → Document Layer"]
+      direction TB
+      PG("全文分页<br/>offset → next_offset")
+    end
+    ROUTER --> l1
+    l1 -.->|不够再展开| l2
+    l2 -.->|仍不够| l3
+  end${storage}${offline}
+  AG -->|MCP 调用| ROUTER
+  l3 -->|三层都读取| store
+  store <-.-|写入| offline${CLASSES}`
 }
 
 /**
@@ -181,5 +231,5 @@ function fengshuMcp(wide: boolean) {
 export const diagramSources: Record<string, { wide: string; narrow: string }> = {
   rag: { wide: rag('LR'), narrow: rag('TB') },
   deploy: { wide: deploy('LR'), narrow: deploy('TD') },
-  'fengshu-mcp': { wide: fengshuMcp(true), narrow: fengshuMcp(false) },
+  'rag-knowledge-mcp': { wide: ragMcp(true), narrow: ragMcp(false) },
 }
