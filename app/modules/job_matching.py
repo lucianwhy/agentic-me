@@ -13,6 +13,7 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.config import config
+from app.model_registry import get_model_registry
 from app.modules.guardrails import InputValidator
 from app.modules.langchain_compat import create_stuff_documents_chain
 from app.modules.model_provider import ModelProvider
@@ -70,7 +71,15 @@ class JobMatchingAnalyzer:
 
     def _get_llm(self):
         if self.llm is None:
-            self.llm = self.model_provider.get_language_model()
+            name = config.llm.model
+            entry = get_model_registry().get(name) or {}
+            self.llm = self.model_provider.get_language_model(
+                model=name,
+                reasoning_effort=entry.get("reasoning_effort"),
+                base_url=entry.get("base_url"),
+                api_key_env=entry.get("api_key_env"),
+                thinking=entry.get("thinking"),
+            )
         return self.llm
 
     def reset_model_cache(self) -> None:

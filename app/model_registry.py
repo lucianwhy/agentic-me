@@ -8,9 +8,16 @@ edits (or a manual edit on the server) apply to the next request without a resta
 Schema::
 
     {"default": "gpt-5.6-sol",
-     "models": [{"id": "gpt-5.6-sol", "label": "Sol（质量）", "reasoning_effort": null}, ...]}
+     "models": [{"id": "gpt-5.6-sol", "label": "Sol（质量）", "reasoning_effort": null,
+                 "base_url": null, "api_key_env": null, "thinking": null}, ...]}
 
-``reasoning_effort`` is optional per model; null means "use the global REASONING_EFFORT".
+``reasoning_effort`` is optional per model; null means "use the global REASONING_EFFORT"
+(except for models with their own ``base_url``, which never inherit the global effort).
+
+``base_url`` / ``api_key_env`` / ``thinking`` are optional per-model OpenAI-compatible
+endpoint settings. null means use the process-wide OPENAI_BASE_URL / API key, and do
+not send a ``thinking`` extra_body field. ``api_key_env`` is the *name* of an
+environment variable (must end in ``_API_KEY``); the key value is never stored here.
 """
 
 from __future__ import annotations
@@ -23,13 +30,21 @@ import tempfile
 from pathlib import Path
 from threading import RLock
 from typing import Any
+from urllib.parse import urlparse
 
 from app.utils.logging_config import main_logger as logger
 
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh", "max")  # same as admin settings
+THINKING_MODES = ("enabled", "disabled")
 MAX_MODELS = 20
 MAX_LABEL_CHARS = 40
+MAX_BASE_URL_CHARS = 200
 _MODEL_ID_RE = re.compile(r"[A-Za-z0-9._:/-]{1,128}")
+# Deliberate ``_API_KEY`` suffix so an admin cannot point a model at ADMIN_PASSWORD
+# (or other secrets) and exfiltrate them to an arbitrary base_url.
+_API_KEY_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,62}_API_KEY$")
+_HEX_SECRET_RE = re.compile(r"^[0-9A-Fa-f]{32,}$")
+_UNCHANGED = object()
 
 SEED: dict[str, Any] = {
     "default": "gpt-5.6-sol",
@@ -76,6 +91,76 @@ def _validate_effort(value: Any) -> str | None:
     return text
 
 
+def _looks_like_secret(value: str) -> bool:
+    """True when the string looks like a key *value* rather than an env var name."""
+    text = value.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered.startswith(("sk-", "bearer ")):
+        return True
+    if _HEX_SECRET_RE.fullmatch(text):
+        return True
+    return any(ch in text for ch in " \t=./+")
+
+
+def _validate_base_url(value: Any) -> str | None:
+    """Absolute https URL, no userinfo/query/fragment. Empty → null (use global)."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if len(text) > MAX_BASE_URL_CHARS:
+        raise ModelRegistryError(f"接口地址不能超过 {MAX_BASE_URL_CHARS} 个字符。")
+    parsed = urlparse(text)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ModelRegistryError("接口地址必须是完整的 https:// URL。")
+    if parsed.username or parsed.password:
+        raise ModelRegistryError("接口地址不能包含用户名或密码。")
+    if parsed.query or parsed.fragment:
+        raise ModelRegistryError("接口地址不能包含查询参数或片段。")
+    return text.rstrip("/")
+
+
+def _validate_api_key_env(value: Any) -> str | None:
+    """Environment *variable name* holding a key. Empty → null (use global key)."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if _looks_like_secret(text) or not _API_KEY_ENV_RE.fullmatch(text):
+        raise ModelRegistryError(
+            "API Key 变量名必须匹配 NAME_API_KEY（大写字母/数字/下划线），"
+            "只填环境变量名，不要填密钥本身。"
+        )
+    return text
+
+
+def _validate_thinking(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text not in THINKING_MODES:
+        raise ModelRegistryError(f"不支持的思考模式：{text}")
+    return text
+
+
+def _entry(
+    model_id: str,
+    label: Any,
+    reasoning_effort: Any,
+    base_url: Any = None,
+    api_key_env: Any = None,
+    thinking: Any = None,
+) -> dict[str, Any]:
+    return {
+        "id": model_id,
+        "label": _validate_label(label, model_id),
+        "reasoning_effort": _validate_effort(reasoning_effort),
+        "base_url": _validate_base_url(base_url),
+        "api_key_env": _validate_api_key_env(api_key_env),
+        "thinking": _validate_thinking(thinking),
+    }
+
+
 def _normalize(data: Any) -> dict[str, Any]:
     """Validate a whole document; raises ModelRegistryError."""
     if not isinstance(data, dict) or not isinstance(data.get("models"), list):
@@ -90,11 +175,14 @@ def _normalize(data: Any) -> dict[str, Any]:
             raise ModelRegistryError(f"模型重复：{model_id}")
         seen.add(model_id)
         models.append(
-            {
-                "id": model_id,
-                "label": _validate_label(item.get("label"), model_id),
-                "reasoning_effort": _validate_effort(item.get("reasoning_effort")),
-            }
+            _entry(
+                model_id,
+                item.get("label"),
+                item.get("reasoning_effort"),
+                item.get("base_url"),
+                item.get("api_key_env"),
+                item.get("thinking"),
+            )
         )
     if not models:
         raise ModelRegistryError("至少需要保留一个模型。")
@@ -187,7 +275,7 @@ class ModelRegistry:
             return data["default"], not name
 
     def public(self) -> dict[str, Any]:
-        """Shape for GET /models (no per-model reasoning settings)."""
+        """Shape for GET /models (id + label only; no endpoint / key / thinking)."""
         data = self.snapshot()
         return {
             "default": data["default"],
@@ -205,13 +293,18 @@ class ModelRegistry:
             self._write(normalized)
             return copy.deepcopy(normalized)
 
-    def add(self, model_id: Any, label: Any = None, reasoning_effort: Any = None) -> dict[str, Any]:
+    def add(
+        self,
+        model_id: Any,
+        label: Any = None,
+        reasoning_effort: Any = None,
+        *,
+        base_url: Any = None,
+        api_key_env: Any = None,
+        thinking: Any = None,
+    ) -> dict[str, Any]:
         mid = validate_model_id(model_id)
-        entry = {
-            "id": mid,
-            "label": _validate_label(label, mid),
-            "reasoning_effort": _validate_effort(reasoning_effort),
-        }
+        entry = _entry(mid, label, reasoning_effort, base_url, api_key_env, thinking)
 
         def fn(data: dict[str, Any]) -> None:
             if any(m["id"] == mid for m in data["models"]):
@@ -222,13 +315,37 @@ class ModelRegistry:
 
         return self._mutate(fn)
 
-    def update(self, model_id: str, label: Any = None, reasoning_effort: Any = None) -> dict[str, Any]:
+    def update(
+        self,
+        model_id: str,
+        label: Any = None,
+        reasoning_effort: Any = None,
+        *,
+        base_url: Any = _UNCHANGED,
+        api_key_env: Any = _UNCHANGED,
+        thinking: Any = _UNCHANGED,
+    ) -> dict[str, Any]:
+        """Replace label and reasoning_effort (same as before: None effort clears it,
+        None/empty label falls back to the model id).
+
+        ``base_url`` / ``api_key_env`` / ``thinking`` default to unchanged so
+        ``update(id, label, effort)`` does not wipe a custom endpoint. Pass an
+        explicit value to replace; pass None or "" to clear back to the global
+        default.
+        """
+
         def fn(data: dict[str, Any]) -> None:
             entry = next((m for m in data["models"] if m["id"] == model_id), None)
             if entry is None:
                 raise ModelRegistryError(f"模型不存在：{model_id}")
             entry["label"] = _validate_label(label, model_id)
             entry["reasoning_effort"] = _validate_effort(reasoning_effort)
+            if base_url is not _UNCHANGED:
+                entry["base_url"] = _validate_base_url(base_url)
+            if api_key_env is not _UNCHANGED:
+                entry["api_key_env"] = _validate_api_key_env(api_key_env)
+            if thinking is not _UNCHANGED:
+                entry["thinking"] = _validate_thinking(thinking)
 
         return self._mutate(fn)
 

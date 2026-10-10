@@ -27,13 +27,13 @@ from app.auth.auth import (
     require_auth,
 )
 from app.config import config
+from app.model_registry import ModelRegistryError, get_model_registry
 from app.modules import mcp_proxy
 from app.modules.job_matching import (
     analyze_job_match,
     process_job_description,
 )
 from app.modules.profile import build_public_profile
-from app.model_registry import ModelRegistryError, get_model_registry
 from app.modules.rag_pipeline import (
     get_chat_completion,
     get_chat_stream,
@@ -51,6 +51,7 @@ from app.modules.retrieval_demo import retrieve_with_scores
 from app.modules.summary_pipeline import get_auto_summary
 from app.modules.tools import tool_ids
 from app.utils.analytics import AdvancedAnalytics, log_login_event
+from app.utils.env import env_is_set
 from app.utils.logging_config import api_logger
 
 router = APIRouter()
@@ -268,12 +269,20 @@ async def save_admin_settings(
 
 
 def _admin_models_payload(data: dict[str, Any]) -> dict[str, Any]:
-    return {**data, "reasoning_efforts": list(REASONING_EFFORTS)}
+    models = []
+    for item in data.get("models") or []:
+        models.append(
+            {
+                **item,
+                "api_key_present": env_is_set(item.get("api_key_env")),
+            }
+        )
+    return {**data, "models": models, "reasoning_efforts": list(REASONING_EFFORTS)}
 
 
-def _admin_models_call(fn, *args: Any) -> dict[str, Any]:
+def _admin_models_call(fn, *args: Any, **kwargs: Any) -> dict[str, Any]:
     try:
-        data = fn(*args)
+        data = fn(*args, **kwargs)
     except ModelRegistryError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     sync_default_model(data["default"])
@@ -291,9 +300,20 @@ async def admin_add_model(
     id: str = Body(..., embed=True),
     label: str | None = Body(None, embed=True),
     reasoning_effort: str | None = Body(None, embed=True),
+    base_url: str | None = Body(None, embed=True),
+    api_key_env: str | None = Body(None, embed=True),
+    thinking: str | None = Body(None, embed=True),
     _: None = Depends(require_admin),
 ):
-    return _admin_models_call(get_model_registry().add, id, label, reasoning_effort)
+    return _admin_models_call(
+        get_model_registry().add,
+        id,
+        label,
+        reasoning_effort,
+        base_url=base_url,
+        api_key_env=api_key_env,
+        thinking=thinking,
+    )
 
 
 @router.post("/api/admin/models/default")
@@ -313,11 +333,21 @@ async def admin_reorder_models(
 @router.patch("/api/admin/models/{model_id:path}")
 async def admin_update_model(
     model_id: str,
-    label: str | None = Body(None, embed=True),
-    reasoning_effort: str | None = Body(None, embed=True),
+    body: dict[str, Any] | None = Body(None),
     _: None = Depends(require_admin),
 ):
-    return _admin_models_call(get_model_registry().update, model_id, label, reasoning_effort)
+    """label / reasoning_effort always replace (same as before). New endpoint
+    fields are only updated when the key is present in the JSON body.
+    """
+    payload = body or {}
+    kwargs: dict[str, Any] = {
+        "label": payload.get("label"),
+        "reasoning_effort": payload.get("reasoning_effort"),
+    }
+    for key in ("base_url", "api_key_env", "thinking"):
+        if key in payload:
+            kwargs[key] = payload[key]
+    return _admin_models_call(get_model_registry().update, model_id, **kwargs)
 
 
 @router.delete("/api/admin/models/{model_id:path}")

@@ -61,6 +61,57 @@ CITATION_INSTRUCTIONS = """
 
 CITATION_DOCUMENT_PROMPT = PromptTemplate.from_template("[{cite}] {page_content}")
 
+# langchain-openai 1.6+ drops third-party `reasoning_content` on Chat Completions
+# deltas, but glm-5.3-flash (and similar) may still surface thinking as list
+# blocks or additional_kwargs. Answer tokens are `content` text only.
+_NON_ANSWER_BLOCK_TYPES = frozenset(
+    {"reasoning", "thinking", "reasoning_content", "thought", "reasoning_details"}
+)
+
+
+def answer_text_from_chunk(chunk: Any) -> str:
+    """Visible answer text from a stream/invoke chunk. Never reasoning/thinking."""
+    if chunk is None:
+        return ""
+    if isinstance(chunk, str):
+        return chunk
+    if isinstance(chunk, dict):
+        if "answer" in chunk:
+            return answer_text_from_chunk(chunk.get("answer"))
+        if "content" in chunk:
+            return _text_from_content(chunk.get("content"))
+        return ""
+    content = getattr(chunk, "content", None)
+    if content is None and not hasattr(chunk, "content"):
+        return ""
+    return _text_from_content(content)
+
+
+def _text_from_content(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+            continue
+        if not isinstance(block, dict):
+            continue
+        btype = str(block.get("type") or "").lower()
+        if btype in _NON_ANSWER_BLOCK_TYPES:
+            continue
+        if btype in ("text", "output_text", "") or "text" in block:
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+            elif isinstance(text, dict) and isinstance(text.get("value"), str):
+                parts.append(text["value"])
+    return "".join(parts)
+
 
 def number_documents(docs: list[Any]) -> list[Document]:
     """Copies of the retrieved docs tagged with their 1-based citation number (metadata 'cite').
@@ -140,11 +191,19 @@ class ChatRAGPipeline:
         self._initialized = True
         rag_logger.info("ChatRAGPipeline instance setup complete")
 
-    def _model_settings(self, model: str | None) -> tuple[str, str | None]:
-        """(model id, per-model reasoning effort or None for the global setting)."""
+    def _model_settings(self, model: str | None) -> dict[str, Any]:
+        """Registry entry for the requested model (id + per-model endpoint fields)."""
         name = (model or "").strip() or get_model_registry().default()
         entry = get_model_registry().get(name)
-        return name, (entry or {}).get("reasoning_effort")
+        if entry:
+            return entry
+        return {
+            "id": name,
+            "reasoning_effort": None,
+            "base_url": None,
+            "api_key_env": None,
+            "thinking": None,
+        }
 
     def reset_model_caches(self) -> None:
         """Discard LLM chains after a runtime model configuration update."""
@@ -154,11 +213,21 @@ class ChatRAGPipeline:
     def _initialize_qa_chain(self, model: str | None = None) -> Any:
         """Return the (cached) answer chain for a model. Thread-safe.
 
-        Keyed by model *and* reasoning effort, so an admin change to a model's effort
-        takes effect on the next request without a restart.
+        Keyed by model, reasoning effort, and per-model endpoint fields, so an admin
+        change takes effect on the next request without a restart.
         """
-        name, effort = self._model_settings(model)
-        key = f"{name}|{effort or ''}"
+        entry = self._model_settings(model)
+        name = entry.get("id") or ""
+        effort = entry.get("reasoning_effort")
+        key = "|".join(
+            [
+                str(name),
+                str(effort or ""),
+                str(entry.get("base_url") or ""),
+                str(entry.get("api_key_env") or ""),
+                str(entry.get("thinking") or ""),
+            ]
+        )
         chain = self._document_chains.get(key)
         if chain is not None:
             return chain
@@ -172,7 +241,11 @@ class ChatRAGPipeline:
                 base_retriever.search_kwargs["k"] = self.config.vectorstore.retrieval_k or 8
                 self.base_retriever = base_retriever
             language_model = self.model_provider.get_language_model(
-                model=name, reasoning_effort=effort
+                model=name,
+                reasoning_effort=effort,
+                base_url=entry.get("base_url"),
+                api_key_env=entry.get("api_key_env"),
+                thinking=entry.get("thinking"),
             )
             system_prompt = build_chat_system_prompt(
                 self.config.chat_system_prompt, self.config.candidate.name
@@ -236,7 +309,7 @@ class ChatRAGPipeline:
             answer = document_chain.invoke(
                 {"input": validated_query, "chat_history": messages, "context": number_documents(docs)}
             )
-            text = answer if isinstance(answer, str) else str(answer)
+            text = answer_text_from_chunk(answer)
             text = self.query_validator.validate_response_output(text)
             rag_logger.info("Chat completion processed successfully")
             return {"answer": {"answer": text, "context": docs}, "sources": docs}
@@ -306,13 +379,7 @@ class ChatRAGPipeline:
             for chunk in document_chain.stream(
                 {"input": validated_query, "chat_history": messages, "context": number_documents(docs)}
             ):
-                if chunk is None:
-                    continue
-                if isinstance(chunk, dict):
-                    piece = chunk.get("answer") or chunk.get("content") or ""
-                else:
-                    piece = chunk
-                text = piece if isinstance(piece, str) else str(piece)
+                text = answer_text_from_chunk(chunk)
                 if not text:
                     continue
                 accumulated.append(text)
